@@ -30,9 +30,9 @@ AsyncWebServer server(80);
 Preferences preferences;
 
 // 星火大模型的账号参数
-String APPID = "";                             // 星火大模型的App ID
-String APIKey = "";    // API Key
-String APISecret = ""; // API Secret
+String APPID = "75749232";                             // 星火大模型的App ID
+String APIKey = "c86e555c7a0ac10c8a6877a5ed4a9218";    // API Key
+String APISecret = "MmRhNjlhNDk1Y2FiMWEyYjg4OWNlY2EyAI"; // API Secret
 
 // 定义一些全局变量
 bool ledstatus = true;
