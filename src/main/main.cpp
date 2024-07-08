@@ -34,6 +34,8 @@ String APPID = "75749232";                             // 星火大模型的App 
 String APIKey = "c86e555c7a0ac10c8a6877a5ed4a9218";    // API Key
 String APISecret = "MmRhNjlhNDk1Y2FiMWEyYjg4OWNlY2Ey"; // API Secret
 
+String answerHello = "嗯，收到";
+
 // 定义一些全局变量
 bool ledstatus = true;
 bool startPlay = false;
@@ -44,7 +46,7 @@ unsigned long pushTime = 0;
 int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
-int textLimit=80; // 超过多长 要分割，立马播放
+int textLimit=120; // 超过多长 要分割，立马播放
 HTTPClient https; // 创建一个HTTP客户端对象
 
 hw_timer_t *timer = NULL; // 定义硬件定时器对象
@@ -180,29 +182,25 @@ void onMessageCallback(WebsocketsMessage message)
             Serial.println(content);
             String answer = "";
 
-            if(receiveFrame==1){
-                string en = content;
-                audio2.connecttospeech(en.c_str(), "zh");
-            }else{
-                Answer += content;
-            }
+            Answer += content;
 
             if (Answer.length() >= textLimit && (audio2.isplaying == 0))
             {
                 String subAnswer = Answer.substring(0, textLimit);
-                Serial.print("subAnswer:");
+                Serial.print("subAnswer-line190:");
                 Serial.println(subAnswer);
                 int lastPeriodIndex = subAnswer.lastIndexOf("。");
 
                 if (lastPeriodIndex != -1)
                 {
                     answer = Answer.substring(0, lastPeriodIndex + 1);
-                    Serial.print("answer: ");
+                    Serial.print("answer-line197: ");
                     Serial.println(answer);
                     Answer = Answer.substring(lastPeriodIndex + 2);
-                    Serial.print("Answer: ");
+                    Serial.print("Answer-line200: ");
                     Serial.println(Answer);
                     audio2.connecttospeech(answer.c_str(), "zh");
+                    Serial.print("speech-line201");
                 }
                 else
                 {
@@ -223,12 +221,14 @@ void onMessageCallback(WebsocketsMessage message)
                     {
                         answer = Answer.substring(0, lastChineseSentenceIndex + 1);
                         audio2.connecttospeech(answer.c_str(), "zh");
+                        Serial.print("speech-line224");
                         Answer = Answer.substring(lastChineseSentenceIndex + 2);
                     }
                     else
                     {
                         answer = Answer.substring(0, textLimit);
                         audio2.connecttospeech(answer.c_str(), "zh");
+                        Serial.print("speech-line230");
                         Answer = Answer.substring(textLimit + 1);
                     }
                 }
@@ -238,10 +238,10 @@ void onMessageCallback(WebsocketsMessage message)
             if (status == 2)
             {
                 getText("assistant", Answer);
-                if (Answer.length() <= 80 && (audio2.isplaying == 0))
+                if (audio2.isplaying == 0)
                 {
-                    // getText("assistant", Answer);
                     audio2.connecttospeech(Answer.c_str(), "zh");
+                    Serial.print("speech-line244");
                 }
             }
         }
@@ -327,6 +327,8 @@ void onMessageCallback1(WebsocketsMessage message)
         Serial.println("xunfeiyun return message:");
         Serial.println(message.data());
         receiveFrame = 0;
+
+        audio2.connecttospeech(answerHello.c_str(), "zh");
 
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
@@ -587,6 +589,7 @@ void voicePlay()
                 displayWrappedText(subAnswers[subindex].c_str(), 0, 11, 128);
             }
             audio2.connecttospeech(subAnswers[subindex].c_str(), "zh");
+            Serial.print("speech-line592");
             subindex++;
         }
         else

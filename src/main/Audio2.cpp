@@ -894,8 +894,6 @@ bool Audio2::connecttospeech(const char *speech, const char *lang)
     char path[] = "/text2audio";
     String headers = "Content-Type: application/x-www-form-urlencoded\r\nAccept: */*";
 
-    // API_KEY = "MYzsCF2FKO9rNK4qXh4HyMCA";
-    // SECRET_KEY = "8CmQ0egq6jiyKGdzXvPr3dZf7hpFRlmK";
     uint16_t speechLen = strlen(speech);
     uint16_t speechBuffLen = speechLen + 600;
     memcpy(m_lastHost, speech, 256);
