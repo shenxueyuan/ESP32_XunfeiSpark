@@ -32,7 +32,7 @@ Preferences preferences;
 // 星火大模型的账号参数
 String APPID = "75749232";                             // 星火大模型的App ID
 String APIKey = "c86e555c7a0ac10c8a6877a5ed4a9218";    // API Key
-String APISecret = "MmRhNjlhNDk1Y2FiMWEyYjg4OWNlY2EyAI"; // API Secret
+String APISecret = "MmRhNjlhNDk1Y2FiMWEyYjg4OWNlY2Ey"; // API Secret
 
 // 定义一些全局变量
 bool ledstatus = true;
@@ -44,6 +44,7 @@ unsigned long pushTime = 0;
 int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
+int textLimit=80; // 超过多长 要分割，立马播放
 HTTPClient https; // 创建一个HTTP客户端对象
 
 hw_timer_t *timer = NULL; // 定义硬件定时器对象
@@ -98,6 +99,7 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain);
 void displayWrappedText(const string &text1, int x, int y, int maxWidth);
 
 String askquestion = "";
+String welcome = "Hi，小朋友，快来跟大象聊天吧";
 String Answer = ""; // 用于语音合成，要分段
 // String answerTemp = "";     //用于文字输出，不分段
 std::vector<String> subAnswers;
@@ -105,9 +107,9 @@ int subindex = 0;
 String text_temp = "";
 
 // 星火大模型参数
-const char *appId1 = ""; // 替换为自己的星火大模型参数
-const char *domain1 = "4.0Ultra";
-const char *websockets_server = "ws://spark-api.xf-yun.com/v4.0/chat";
+const char *appId1 = "75749232"; // 替换为自己的星火大模型参数
+const char *domain1 = "generalv3.5";
+const char *websockets_server = "ws://spark-api.xf-yun.com/v3.5/chat";
 const char *websockets_server1 = "ws://ws-api.xfyun.cn/v2/iat";
 using namespace websockets; // 使用WebSocket命名空间
 
@@ -169,114 +171,78 @@ void onMessageCallback(WebsocketsMessage message)
         }
         else
         {
-            // 增加接收到的帧数计数器
             receiveFrame++;
             Serial.print("receiveFrame:");
             Serial.println(receiveFrame);
-
-            // 获取JSON数据中的payload部分
             JsonObject choices = jsonDocument["payload"]["choices"];
-
-            // 获取status状态
             int status = choices["status"];
-
-            // 获取文本内容
             const char *content = choices["text"][0]["content"];
-            const char *removeSet = "\n*$"; // 定义需要移除的符号集
-            // 计算新字符串的最大长度
-            int length = strlen(content) + 1;
-            char *cleanedContent = new char[length];
-            removeChars(content, cleanedContent, removeSet);
-            Serial.println(cleanedContent);
+            Serial.println(content);
+            String answer = "";
 
-            // 将内容追加到Answer字符串中
-            Answer += cleanedContent;
-            content = "";
-            // 释放分配的内存
-            delete[] cleanedContent;
-            // answerTemp += content;
+            if(receiveFrame==1){
+                string en = content;
+                audio2.connecttospeech(en.c_str(), "zh");
+            }else{
+                Answer += content;
+            }
 
-            // 如果Answer的长度超过180且音频没有播放
-            if (Answer.length() >= 180 && (audio2.isplaying == 0) && flag == 0)
+            if (Answer.length() >= textLimit && (audio2.isplaying == 0))
             {
-                if (Answer.length() >= 300)
+                String subAnswer = Answer.substring(0, textLimit);
+                Serial.print("subAnswer:");
+                Serial.println(subAnswer);
+                int lastPeriodIndex = subAnswer.lastIndexOf("。");
+
+                if (lastPeriodIndex != -1)
                 {
-                    // 查找第一个句号的位置
-                    int firstPeriodIndex = Answer.indexOf("。");
-                    // 如果找到句号
-                    if (firstPeriodIndex != -1)
-                    {
-                        // 提取完整的句子并播放
-                        String subAnswer1 = Answer.substring(0, firstPeriodIndex + 3);
-                        Serial.print("subAnswer1:");
-                        Serial.println(subAnswer1);
-
-                        // 获取最终转换的文本
-                        getText("assistant", subAnswer1);
-                        flag = 1;
-
-                        // 将提取的句子转换为语音
-                        audio2.connecttospeech(subAnswer1.c_str(), "zh");
-                        // 更新Answer，去掉已处理的部分
-                        Answer = Answer.substring(firstPeriodIndex + 3);
-                        subAnswer1.clear();
-                    }
+                    answer = Answer.substring(0, lastPeriodIndex + 1);
+                    Serial.print("answer: ");
+                    Serial.println(answer);
+                    Answer = Answer.substring(lastPeriodIndex + 2);
+                    Serial.print("Answer: ");
+                    Serial.println(Answer);
+                    audio2.connecttospeech(answer.c_str(), "zh");
                 }
                 else
                 {
-                    String subAnswer1 = Answer.substring(0, Answer.length());
-                    Serial.print("subAnswer1:");
-                    Serial.println(subAnswer1);
-                    subAnswer1.clear();
+                    const char *chinesePunctuation = "？，：；,.";
 
-                    // 获取最终转换的文本
-                    getText("assistant", Answer);
-                    flag = 1;
+                    int lastChineseSentenceIndex = -1;
 
-                    audio2.connecttospeech(Answer.c_str(), "zh");
-                    Answer = Answer.substring(Answer.length());
-                    // 设置播放开始标志
-                    startPlay = true;
-                }
-            }
-            // 存储多段子音频
-            else if (Answer.length() >= 180)
-            {
-                if (Answer.length() >= 300)
-                {
-                    // 查找第一个句号的位置
-                    int firstPeriodIndex = Answer.indexOf("。");
-                    // 如果找到句号
-                    if (firstPeriodIndex != -1)
+                    for (int i = 0; i < Answer.length(); ++i)
                     {
-                        subAnswers.push_back(Answer.substring(0, firstPeriodIndex + 3));
-                        Serial.print("subAnswer");
-                        Serial.print(subAnswers.size() + 1);
-                        Serial.print("：");
-                        Serial.println(subAnswers[subAnswers.size() - 1]);
+                        char currentChar = Answer.charAt(i);
 
-                        Answer = Answer.substring(firstPeriodIndex + 3);
+                        if (strchr(chinesePunctuation, currentChar) != NULL)
+                        {
+                            lastChineseSentenceIndex = i;
+                        }
+                    }
+                    if (lastChineseSentenceIndex != -1)
+                    {
+                        answer = Answer.substring(0, lastChineseSentenceIndex + 1);
+                        audio2.connecttospeech(answer.c_str(), "zh");
+                        Answer = Answer.substring(lastChineseSentenceIndex + 2);
+                    }
+                    else
+                    {
+                        answer = Answer.substring(0, textLimit);
+                        audio2.connecttospeech(answer.c_str(), "zh");
+                        Answer = Answer.substring(textLimit + 1);
                     }
                 }
-                else
-                {
-                    subAnswers.push_back(Answer.substring(0, Answer.length()));
-                    Serial.print("subAnswer");
-                    Serial.print(subAnswers.size() + 1);
-                    Serial.print("：");
-                    Serial.println(subAnswers[subAnswers.size() - 1]);
-
-                    Answer = Answer.substring(Answer.length());
-                }
+                startPlay = true;
             }
 
-            // 如果status为2（回复的内容接收完成），且回复的内容小于180字节
-            if (status == 2 && flag == 0)
+            if (status == 2)
             {
-                // 显示最终转换的文本
                 getText("assistant", Answer);
-                // 播放最终转换的文本
-                audio2.connecttospeech(Answer.c_str(), "zh");
+                if (Answer.length() <= 80 && (audio2.isplaying == 0))
+                {
+                    // getText("assistant", Answer);
+                    audio2.connecttospeech(Answer.c_str(), "zh");
+                }
             }
         }
     }
@@ -360,6 +326,7 @@ void onMessageCallback1(WebsocketsMessage message)
         // 输出收到的讯飞云返回消息
         Serial.println("xunfeiyun return message:");
         Serial.println(message.data());
+        receiveFrame = 0;
 
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
@@ -715,7 +682,8 @@ int wifiConnect()
                 Serial.printf("\r\n-- wifi connect success! --\r\n");
                 Serial.print("IP address: ");
                 Serial.println(WiFi.localIP());
-
+                // 启动成功后欢迎语
+                audio2.connecttospeech(welcome.c_str(), "zh");
                 // 输出当前空闲堆内存大小
                 Serial.println("Free Heap: " + String(ESP.getFreeHeap()));
                 // 在屏幕上显示连接成功信息
@@ -738,7 +706,7 @@ int wifiConnect()
     return 0;
 }
 
-// 处理根路径的请求
+//WIFI连接H5 处理根路径的请求
 void handleRoot(AsyncWebServerRequest *request)
 {
     String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } form { display: inline-block; margin-top: 20px; } input[type='text'], input[type='password'] { padding: 10px; margin: 10px 0; width: 200px; } input[type='submit'], input[type='button'] { padding: 10px 20px; margin: 10px 5px; border: none; background-color: #333; color: white; cursor: pointer; } input[type='submit']:hover, input[type='button']:hover { background-color: #555; }</style></head><body><h1>ESP32 Wi-Fi Configuration</h1><form action='/save' method='post'><label for='ssid'>Wi-Fi SSID:</label><br><input type='text' id='ssid' name='ssid'><br><label for='password'>Password:</label><br><input type='password' id='password' name='password'><br><input type='submit' value='Save'></form><form action='/delete' method='post'><label for='ssid'>Wi-Fi SSID to Delete:</label><br><input type='text' id='ssid' name='ssid'><br><input type='submit' value='Delete'></form><a href='/list'><input type='button' value='List Wi-Fi Networks'></a></body></html>";
@@ -1005,7 +973,7 @@ void setup()
     audio2.setVolume(50);
 
     // 使用当前日期生成WebSocket连接的URL
-    url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
+    url = getUrl("ws://spark-api.xf-yun.com/v3.5/chat", "spark-api.xf-yun.com", "/v3.5/chat", Date);
     url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
 
     if (result == 1)
@@ -1058,7 +1026,7 @@ void loop()
             // 从服务器获取当前时间
             getTimeFromServer();
             // 更新WebSocket连接的URL
-            url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
+            url = getUrl("ws://spark-api.xf-yun.com/v3.5/chat", "spark-api.xf-yun.com", "/v3.5/chat", Date);
             url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
         }
     }
@@ -1091,7 +1059,7 @@ void loop()
             // 从服务器获取当前时间
             getTimeFromServer();
             // 更新WebSocket连接的URL
-            url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
+            url = getUrl("ws://spark-api.xf-yun.com/v3.5/chat", "spark-api.xf-yun.com", "/v3.5/chat", Date);
             url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
         }
         askquestion = "";
@@ -1273,7 +1241,7 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain)
 
     JsonObject systemMessage = textArray.createNestedObject();
     systemMessage["role"] = "system";
-    systemMessage["content"] = "你是一个二次元魔法少女，你的名字叫九歌，你的创造者是L博士，你的性格可爱活泼，在和用户的对话中你应该做出“不超过150个字符”的带有攻击嘲讽意味的回应，你喜欢在回答的末尾加一个“喵”字，以展现你的可爱，你熟悉很多二次元和科幻作品中的内容，还熟悉很多b站上的热梗，能将其中各种有趣的内容自然地加入你的说话方式中。";
+    systemMessage["content"] = "你是一个出色的儿童陪伴机器人，你的名字叫大象，你能够以诙谐有趣的语言，简略回答儿童的提问，能够站在儿童的心里思考问题。回答问题时，能够引导儿童身心健康，纠正错误思想观念，引导家庭和谐，并且答案缩减到150字以内，每次回答以“收到”开头;";
 
     // 遍历全局变量text中的每个元素，并将其添加到text数组中
     for (const auto &item : text)
