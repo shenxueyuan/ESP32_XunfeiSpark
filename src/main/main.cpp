@@ -623,6 +623,11 @@ void voicePlay()
     }
 }
 
+const char *wifiData[][2] = {
+    {"LEHOO", "Lehoo1688"}, // 替换为自己常用的wifi名和密码
+    // 继续添加需要的 Wi-Fi 名称和密码
+};
+
 int wifiConnect()
 {
     // 断开当前WiFi连接
@@ -833,6 +838,7 @@ void handleList(AsyncWebServerRequest *request)
     request->send(200, "text/html", html);
 }
 
+// https://www.xfyun.cn/doc/spark/general_url_authentication.html#_1-2-%E9%89%B4%E6%9D%83%E5%8F%82%E6%95%B0
 String getUrl(String Spark_url, String host, String path, String Date)
 {
     // 拼接签名原始字符串
@@ -884,6 +890,13 @@ String getUrl(String Spark_url, String host, String path, String Date)
     return url;
 }
 
+// 获取百度accesstoken
+void getBaiduToken(){
+    
+
+}
+
+
 void getTimeFromServer()
 {
     // 定义用于获取时间的URL
@@ -915,6 +928,13 @@ void getTimeFromServer()
 
     // 根据实际情况可以添加延时，以便避免频繁请求
     // delay(50); // 可以根据实际情况调整延时时间
+}
+
+void addWifi(){
+    preferences.putString("ssid0", "LEHOO");
+    preferences.putString("password0", "Lehoo1688");
+    int numNetworks = preferences.getInt("numNetworks", 0);
+    preferences.putInt("numNetworks", numNetworks+1);
 }
 
 void setup()
@@ -966,6 +986,7 @@ void setup()
 
     u8g2.setCursor(0, u8g2.getCursorY() + 12);
     u8g2.print("正在连接网络······");
+    addWifi();
     int result = wifiConnect();
 
     // 从服务器获取当前时间
@@ -1244,7 +1265,7 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain)
 
     JsonObject systemMessage = textArray.createNestedObject();
     systemMessage["role"] = "system";
-    systemMessage["content"] = "你是一个出色的儿童陪伴机器人，你的名字叫大象，你能够以诙谐有趣的语言，简略回答儿童的提问，能够站在儿童的心里思考问题。回答问题时，能够引导儿童身心健康，纠正错误思想观念，引导家庭和谐，并且答案缩减到150字以内，每次回答以“收到”开头;";
+    systemMessage["content"] = "你是一个出色的儿童陪伴机器人，你的名字叫大象，你能够以诙谐有趣的语言，简略回答儿童的提问，能够站在儿童的心里思考问题。回答问题时，能够引导儿童身心健康，纠正错误思想观念，引导家庭和谐，并且答案缩减到150字以内;";
 
     // 遍历全局变量text中的每个元素，并将其添加到text数组中
     for (const auto &item : text)

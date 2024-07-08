@@ -894,6 +894,8 @@ bool Audio2::connecttospeech(const char *speech, const char *lang)
     char path[] = "/text2audio";
     String headers = "Content-Type: application/x-www-form-urlencoded\r\nAccept: */*";
 
+    // API_KEY = "YcYPjhxw0V7wzhcu07xnLbU5";
+    // SECRET_KEY = "ANDLajJTKt4juGarl8cME1BS3aXmRMdV";
     uint16_t speechLen = strlen(speech);
     uint16_t speechBuffLen = speechLen + 600;
     memcpy(m_lastHost, speech, 256);
@@ -909,18 +911,20 @@ bool Audio2::connecttospeech(const char *speech, const char *lang)
     urlencode(speechBuff, speechBuffLen);
     // ctp = 1 &lan = zh &spd = 5 &pit = 5 &vol = 5 &per = 1 &aue = 3 ";
 
+    // 应用列表 https://console.bce.baidu.com/ai/#/ai/ocr/app/list
+    // API 文档地址 https://ai.baidu.com/ai-doc/SPEECH/mlbxh7xie
     char resp[strlen(speechBuff) + 200] = "";
     strcat(resp, "tex=");
     strcat(resp, speechBuff);
-    strcat(resp, "&tok=25.8115243c95c51b21b338b7979200a758.315360000.2012692531.282335 - 41099492&");
-    strcat(resp, "cuid=MNOSvF72O7JZ2KrqZAnIEbY4KBn3repX&");
+    strcat(resp, "&tok=24.788f4cb2d63868cebf5d407357a46166.2592000.1723020091.282335-92208356&");// token
+    strcat(resp, "cuid=MNOSvF72O7JZ2KrqZAnIEbY4KBn3repX&");// 唯一标识计算UV值，建议 机器MAC、或者IMEI码
     strcat(resp, "ctp=1&");
-    strcat(resp, "lan=zh&");
-    strcat(resp, "spd=4&");
-    strcat(resp, "pit=5&");
-    strcat(resp, "vol=5&");
-    strcat(resp, "per=5118&");
-    strcat(resp, "aue=3");
+    strcat(resp, "lan=zh&");//
+    strcat(resp, "spd=5&");// 语速 0-9
+    strcat(resp, "pit=5&");// 音调0-9
+    strcat(resp, "vol=5&");// 音量0-15
+    strcat(resp, "per=5118&");//发音人 https://ai.baidu.com/ai-doc/SPEECH/Rluv3uq3d
+    strcat(resp, "aue=3");// 下载的文件格式, 3：mp3(default) 4： pcm-16k 5： pcm-8k 6. wav
 
     if (speechBuff)
     {
