@@ -15,7 +15,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <U8g2_for_Adafruit_GFX.h>
-#include "bizhi.h"
+
 using namespace websockets;
 
 // 定义引脚和常量
@@ -361,8 +361,6 @@ void onMessageCallback1(WebsocketsMessage message)
             {
                 // 清空屏幕
                 tft.fillScreen(ST77XX_WHITE);
-                // 显示图片
-                // tft.drawRGBBitmap(0, 0, liuying1_0, 128, 160);
                 tft.setCursor(0, 0);
                 // 处理一般的问答请求
                 getText("user", askquestion);
@@ -575,8 +573,6 @@ void voicePlay()
             {
                 // 清空屏幕
                 tft.fillScreen(ST77XX_WHITE);
-                // 显示图片
-                // tft.drawRGBBitmap(0, 0, liuying1_0, 128, 160);
                 // 显示剩余的文字
                 displayWrappedText(text_temp.c_str(), 0, 11, 128);
                 text_temp = "";
@@ -598,8 +594,6 @@ void voicePlay()
             {
                 // 清空屏幕
                 tft.fillScreen(ST77XX_WHITE);
-                // 显示图片
-                // tft.drawRGBBitmap(0, 0, liuying1_0, 128, 160);
                 // 显示剩余的文字
                 displayWrappedText(text_temp.c_str(), 0, 11, 128);
                 text_temp = "";
@@ -892,7 +886,7 @@ String getUrl(String Spark_url, String host, String path, String Date)
 
 // 获取百度accesstoken
 void getBaiduToken(){
-    
+
 
 }
 
@@ -957,9 +951,6 @@ void setup()
     u8g2.setFont(u8g2_font_wqy12_t_gb2312); // 设置中文字体
     u8g2.setFontMode(1);                    // 设置字体模式为1，以支持中文字符
     u8g2.setForegroundColor(ST77XX_BLACK);  // 设置字体颜色为黑色
-
-    // 显示图片
-    // tft.drawRGBBitmap(0, 0, liuying1_0, 128, 160);
 
     // 显示文字
     tft.setTextColor(ST77XX_BLACK);
