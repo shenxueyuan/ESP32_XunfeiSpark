@@ -30,9 +30,9 @@ AsyncWebServer server(80);
 Preferences preferences;
 
 // 星火大模型的账号参数
-String APPID = "75749232";                             // 星火大模型的App ID
-String APIKey = "c86e555c7a0ac10c8a6877a5ed4a9218";    // API Key
-String APISecret = "MmRhNjlhNDk1Y2FiMWEyYjg4OWNlY2Ey"; // API Secret
+String APPID = "e7df2284";                             // 星火大模型的App ID
+String APIKey = "fbc15ca65a5bf76806a140e8b4600f71";    // API Key
+String APISecret = "YzMyMDE2YWExMzkyOWU0YmQ4YjIzZmE1"; // API Secret
 
 String answerHello = "嗯，收到";
 
@@ -109,9 +109,9 @@ int subindex = 0;
 String text_temp = "";
 
 // 星火大模型参数
-const char *appId1 = "75749232"; // 替换为自己的星火大模型参数
-const char *domain1 = "generalv3.5";
-const char *websockets_server = "ws://spark-api.xf-yun.com/v3.5/chat";
+const char *appId1 = "e7df2284"; // 替换为自己的星火大模型参数
+const char *domain1 = "4.0Ultra";
+const char *websockets_server = "ws://spark-api.xf-yun.com/v4.0/chat";
 const char *websockets_server1 = "ws://ws-api.xfyun.cn/v2/iat";
 using namespace websockets; // 使用WebSocket命名空间
 
@@ -397,7 +397,7 @@ void onEventsCallback1(WebsocketsEvent event, String data)
         // 清空屏幕
         tft.fillScreen(ST77XX_WHITE);
         // 显示图片
-        tft.drawRGBBitmap(0, 0, kunkun_0, 128, 160);
+        // tft.drawRGBBitmap(0, 0, kunkun_0, 128, 160);
         u8g2.setCursor(0, 11);
         u8g2.print("请说话。");
 
@@ -839,7 +839,7 @@ String getUrl(String Spark_url, String host, String path, String Date)
     String signature_origin = "host: " + host + "\n";
     signature_origin += "date: " + Date + "\n";
     signature_origin += "GET " + path + " HTTP/1.1";
-    // 示例：signature_origin="host: spark-api.xf-yun.com\ndate: Mon, 04 Mar 2024 19:23:20 GMT\nGET /v3.5/chat HTTP/1.1";
+    // 示例：signature_origin="host: spark-api.xf-yun.com\ndate: Mon, 04 Mar 2024 19:23:20 GMT\nGET /v4.0/chat HTTP/1.1";
 
     // 使用 HMAC-SHA256 进行加密
     unsigned char hmac[32];                                 // 存储HMAC结果
@@ -988,7 +988,7 @@ void setup()
     audio2.setVolume(50);
 
     // 使用当前日期生成WebSocket连接的URL
-    url = getUrl("ws://spark-api.xf-yun.com/v3.5/chat", "spark-api.xf-yun.com", "/v3.5/chat", Date);
+    url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
     url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
 
     if (result == 1)
@@ -1041,7 +1041,7 @@ void loop()
             // 从服务器获取当前时间
             getTimeFromServer();
             // 更新WebSocket连接的URL
-            url = getUrl("ws://spark-api.xf-yun.com/v3.5/chat", "spark-api.xf-yun.com", "/v3.5/chat", Date);
+            url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
             url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
         }
     }
@@ -1074,7 +1074,7 @@ void loop()
             // 从服务器获取当前时间
             getTimeFromServer();
             // 更新WebSocket连接的URL
-            url = getUrl("ws://spark-api.xf-yun.com/v3.5/chat", "spark-api.xf-yun.com", "/v3.5/chat", Date);
+            url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
             url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
         }
         askquestion = "";
