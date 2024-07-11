@@ -916,8 +916,8 @@ bool Audio2::connecttospeech(const char *speech, const char *lang)
     char resp[strlen(speechBuff) + 200] = "";
     strcat(resp, "tex=");
     strcat(resp, speechBuff);
-    strcat(resp, "&tok=24.788f4cb2d63868cebf5d407357a46166.2592000.1723020091.282335-92208356&");// token
-    strcat(resp, "cuid=MNOSvF72O7JZ2KrqZAnIEbY4KBn3repX&");// 唯一标识计算UV值，建议 机器MAC、或者IMEI码
+    strcat(resp, "&tok=25.bc818613a9c6dbf29e8495ce419e9f43.315360000.2036047093.282335 - 86622984&");
+    strcat(resp, "cuid=AIFWYVLm5xw8l7zVDWPnwBMAURmvPd6C&");// 唯一标识计算UV值，建议 机器MAC、或者IMEI码
     strcat(resp, "ctp=1&");
     strcat(resp, "lan=zh&");//
     strcat(resp, "spd=5&");// 语速 0-9

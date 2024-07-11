@@ -14,7 +14,6 @@
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
-#include <U8g2_for_Adafruit_GFX.h>
 
 using namespace websockets;
 
@@ -34,6 +33,7 @@ String APPID = "e7df2284";                             // 星火大模型的App 
 String APIKey = "fbc15ca65a5bf76806a140e8b4600f71";    // API Key
 String APISecret = "YzMyMDE2YWExMzkyOWU0YmQ4YjIzZmE1"; // API Secret
 
+String answerHello = "嗯，收到";
 
 // 定义一些全局变量
 bool ledstatus = true;
@@ -53,6 +53,7 @@ hw_timer_t *timer = NULL; // 定义硬件定时器对象
 uint8_t adc_start_flag = 0;
 uint8_t adc_complete_flag = 0;
 
+
 // 创建音频对象
 Audio1 audioRecord;
 Audio2 audioTTS(false, 3, I2S_NUM_1); // 参数: 是否使用SD卡, 音量, I2S端口号
@@ -68,8 +69,12 @@ void handleSave(AsyncWebServerRequest *request);
 void handleDelete(AsyncWebServerRequest *request);
 void handleList(AsyncWebServerRequest *request);
 void gain_token(void);
+void getText(String role, String content);
+void checkLen(JsonArray textArray);
+int getLength(JsonArray textArray);
 float calculateRMS(uint8_t *buffer, int bufferSize);
-void ConnServerTTS();
+void ConnServerAI();
+void sendMsgToAILLM();
 void ConnServerASR();
 
 // 创建动态JSON文档对象和数组
@@ -83,9 +88,9 @@ String Date = "";
 
 // 函数声明
 DynamicJsonDocument gen_params(const char *appid, const char *domain);
+void displayWrappedText(const string &text1, int x, int y, int maxWidth);
 
 String askquestion = "";
-String answerHello = "嗯，收到";
 String welcome = "Hi，小朋友，快来跟大象聊天吧";
 String Answer = ""; // 用于语音合成，要分段
 String roleContent = "你是一个出色的儿童陪伴机器人，你的名字叫大象，你能够以诙谐有趣的语言，简略回答儿童的提问，能够站在儿童的心里思考问题。回答问题时，能够引导儿童身心健康，纠正错误思想观念，引导家庭和谐，并且答案缩减到150字以内;";
@@ -131,7 +136,7 @@ void removeChars(const char *input, char *output, const char *removeSet)
 }
 
 // 将回复的文本转成语音
-void onMessageCallbackTTS(WebsocketsMessage message)
+void onMessageCallbackAI(WebsocketsMessage message)
 {
     // 创建一个静态JSON文档对象，用于存储解析后的JSON数据，最大容量为4096字节
     StaticJsonDocument<4096> jsonDocument;
@@ -174,6 +179,7 @@ void onMessageCallbackTTS(WebsocketsMessage message)
                 String subAnswer = Answer.substring(0, textLimit);
                 Serial.print("subAnswer-line190:");
                 Serial.println(subAnswer);
+
                 int lastPeriodIndex = subAnswer.lastIndexOf("。");
 
                 if (lastPeriodIndex != -1)
@@ -189,7 +195,7 @@ void onMessageCallbackTTS(WebsocketsMessage message)
                 }
                 else
                 {
-                    const char *chinesePunctuation = "？，：；,.";
+                    const char *chinesePunctuation = "？，！：；,.";
 
                     int lastChineseSentenceIndex = -1;
 
@@ -222,6 +228,7 @@ void onMessageCallbackTTS(WebsocketsMessage message)
 
             if (status == 2)
             {
+                getText("assistant", Answer);
                 if (audioTTS.isplaying == 0)
                 {
                     audioTTS.connecttospeech(Answer.c_str(), "zh");
@@ -233,32 +240,20 @@ void onMessageCallbackTTS(WebsocketsMessage message)
 }
 
 // 问题发送给大模型
-void onEventsCallback(WebsocketsEvent event, String data)
+void onEventsCallbackAI(WebsocketsEvent event, String data)
 {
     // 当WebSocket连接打开时触发
     if (event == WebsocketsEvent::ConnectionOpened)
     {
+        sendMsgToAILLM();
         // 向串口输出提示信息
-        Serial.println("Send message to server0!");
-
-        // 生成连接参数的JSON文档
-        DynamicJsonDocument jsonData = gen_params(appId1, domain1);
-
-        // 将JSON文档序列化为字符串
-        String jsonString;
-        serializeJson(jsonData, jsonString);
-
-        // 向串口输出生成的JSON字符串
-        Serial.println(jsonString);
-
-        // 通过WebSocket客户端发送JSON字符串到服务器
-        webSocketClientAI.send(jsonString);
+        Serial.println("Send message to server-ai!");
     }
     // 当WebSocket连接关闭时触发
     else if (event == WebsocketsEvent::ConnectionClosed)
     {
         // 向串口输出提示信息
-        Serial.println("Connnection0 Closed");
+        Serial.println("Connnection-ai Closed");
     }
     // 当收到Ping消息时触发
     else if (event == WebsocketsEvent::GotPing)
@@ -272,6 +267,23 @@ void onEventsCallback(WebsocketsEvent event, String data)
         // 向串口输出提示信息
         Serial.println("Got a Pong!");
     }
+}
+
+void sendMsgToAILLM()
+{
+
+    // 生成连接参数的JSON文档
+    DynamicJsonDocument jsonData = gen_params(appId1, domain1);
+
+    // 将JSON文档序列化为字符串
+    String jsonString;
+    serializeJson(jsonData, jsonString);
+
+    // 向串口输出生成的JSON字符串
+    Serial.println(jsonString);
+
+    // 通过WebSocket客户端发送JSON字符串到服务器
+    webSocketClientAI.send(jsonString);
 }
 
 // 将接收到的语音转成文本
@@ -343,20 +355,23 @@ void onMessageCallbackASR(WebsocketsMessage message)
             }
             else
             {
+             
                 // 处理一般的问答请求
+                getText("user", askquestion);
                 Serial.print("text:");
                 Serial.println(text);
                 Answer = "";
                 lastsetence = false;
                 isReady = true;
-                ConnServerTTS();
+
+                ConnServerAI();
             }
         }
     }
 }
 
 // 录音
-void onEventsCallback1(WebsocketsEvent event, String data)
+void onEventsCallbackASR(WebsocketsEvent event, String data)
 {
     // 当WebSocket连接打开时触发
     if (event == WebsocketsEvent::ConnectionOpened)
@@ -373,7 +388,6 @@ void onEventsCallback1(WebsocketsEvent event, String data)
 
         // 创建一个JSON文档对象
         DynamicJsonDocument doc(2500);
- 
 
         // 无限循环，用于录制和发送音频数据
         while (1)
@@ -476,7 +490,7 @@ void onEventsCallback1(WebsocketsEvent event, String data)
     else if (event == WebsocketsEvent::ConnectionClosed)
     {
         // 向串口输出提示信息
-        Serial.println("Connnection1 Closed");
+        Serial.println("Connnection-ASR Closed");
     }
     // 当收到Ping消息时触发
     else if (event == WebsocketsEvent::GotPing)
@@ -492,47 +506,48 @@ void onEventsCallback1(WebsocketsEvent event, String data)
     }
 }
 
-void ConnServerTTS()
+void ConnServerAI()
 {
     // 向串口输出WebSocket服务器的URL
     Serial.println("url:" + url);
 
     // 设置WebSocket客户端的消息回调函数
-    webSocketClientAI.onMessage(onMessageCallbackTTS);
+    webSocketClientAI.onMessage(onMessageCallbackAI);
 
     // 设置WebSocket客户端的事件回调函数
-    webSocketClientAI.onEvent(onEventsCallback);
+    webSocketClientAI.onEvent(onEventsCallbackAI);
 
     // 开始连接WebSocket服务器
-    Serial.println("Begin connect to server0......");
+    Serial.println("Begin connect to server-ai......");
 
     // 尝试连接到WebSocket服务器
     if (webSocketClientAI.connect(url.c_str()))
     {
-        // 如果连接成功，输出成功信息
-        Serial.println("Connected to server0!");
+        // 如果连接成功，输出成功
+        Serial.println("Connected to server-ai!");
     }
     else
     {
         // 如果连接失败，输出失败信息
-        Serial.println("Failed to connect to server0!");
+        Serial.println("Failed to connect to server-ai!");
     }
+    
 }
 
 void ConnServerASR()
 {
     // Serial.println("url1:" + url1);
     webSocketClientASR.onMessage(onMessageCallbackASR);
-    webSocketClientASR.onEvent(onEventsCallback1);
+    webSocketClientASR.onEvent(onEventsCallbackASR);
     // Connect to WebSocket
-    Serial.println("Begin connect to server1......");
+    Serial.println("Begin connect to server-asr......");
     if (webSocketClientASR.connect(url1.c_str()))
     {
-        Serial.println("Connected to server1!");
+        Serial.println("Connected to server-asr!");
     }
     else
     {
-        Serial.println("Failed to connect to server1!");
+        Serial.println("Failed to connect to server-asr!");
     }
 }
 
@@ -586,6 +601,7 @@ int wifiConnect()
             Serial.println(ssid);
             Serial.print("password:");
             Serial.println(password);
+            
 
             uint8_t count = 0;
             WiFi.begin(ssid.c_str(), password.c_str());
@@ -601,6 +617,7 @@ int wifiConnect()
                 if (count >= 30)
                 {
                     Serial.printf("\r\n-- wifi connect fail! --\r\n");
+                    
                     break;
                 }
 
@@ -618,10 +635,12 @@ int wifiConnect()
                 audioTTS.connecttospeech(welcome.c_str(), "zh");
                 // 输出当前空闲堆内存大小
                 Serial.println("Free Heap: " + String(ESP.getFreeHeap()));
+            
                 return 1;
             }
         }
     }
+    
     return 0;
 }
 
@@ -635,6 +654,7 @@ void handleRoot(AsyncWebServerRequest *request)
 // 处理保存 WiFi 配置的请求
 void handleSave(AsyncWebServerRequest *request)
 {
+    
     Serial.println("Start Save!");
     String ssid = request->arg("ssid");
     String password = request->arg("password");
@@ -660,6 +680,7 @@ void handleSave(AsyncWebServerRequest *request)
     preferences.putString(("ssid" + String(numNetworks)).c_str(), ssid);
     preferences.putString(("password" + String(numNetworks)).c_str(), password);
     preferences.putInt("numNetworks", numNetworks + 1);
+    
     Serial.println("Succeess Save!");
 
     request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Configuration Saved!</h1><p>The device will restart and attempt to connect to the new network.</p><p><a href='/'>Go Back</a></p></body></html>");
@@ -668,6 +689,7 @@ void handleSave(AsyncWebServerRequest *request)
 // 处理删除 WiFi 配置的请求
 void handleDelete(AsyncWebServerRequest *request)
 {
+
     Serial.println("Start Delete!");
     String ssidToDelete = request->arg("ssid");
 
@@ -696,6 +718,7 @@ void handleDelete(AsyncWebServerRequest *request)
             preferences.remove(("ssid" + String(numNetworks - 1)).c_str());
             preferences.remove(("password" + String(numNetworks - 1)).c_str());
             preferences.putInt("numNetworks", numNetworks - 1);
+            
             Serial.println("Succeess Delete!");
 
             request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Network Deleted!</h1><p>The network has been deleted. The device will restart to apply changes.</p><p><a href='/'>Go Back</a></p></body></html>");
@@ -779,12 +802,6 @@ String getUrl(String Spark_url, String host, String path, String Date)
     return url;
 }
 
-// 获取百度accesstoken
-void getBaiduToken(){
-
-
-}
-
 
 void getTimeFromServer()
 {
@@ -820,10 +837,12 @@ void getTimeFromServer()
 }
 
 void addWifi(){
-    preferences.putString("ssid0", "LEHOO");
-    preferences.putString("password0", "Lehoo1688");
     int numNetworks = preferences.getInt("numNetworks", 0);
-    preferences.putInt("numNetworks", numNetworks+1);
+    if(numNetworks<1){
+        preferences.putString("ssid0", "LEHOO");
+        preferences.putString("password0", "Lehoo1688");
+        preferences.putInt("numNetworks", 1);
+    }
 }
 
 void setup()
@@ -870,6 +889,7 @@ void setup()
 
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
+
 }
 
 void loop()
@@ -877,7 +897,7 @@ void loop()
     // 轮询处理WebSocket客户端消息
     webSocketClientAI.poll();
     webSocketClientASR.poll();
-
+ 
     // 如果开始播放语音
     if (startPlay)
     {
@@ -925,6 +945,7 @@ void loop()
         flag = 0;
         subindex = 0;
         subAnswers.clear();
+        textLimit = 50;
         // answerTemp = "";
         // text.clear();
         Serial.printf("Start recognition\r\n\r\n");
@@ -944,11 +965,83 @@ void loop()
         }
         askquestion = "";
 
-        // 连接到WebSocket服务器1
+        // 连接到WebSocket服务器-语音识别
         ConnServerASR();
 
         adc_complete_flag = 0;
     }
+}
+ 
+
+// 显示文本
+void getText(String role, String content)
+{
+    // 检查并调整文本长度
+    checkLen(text);
+
+    // 创建一个动态JSON文档，容量为1024字节
+    DynamicJsonDocument jsoncon(1024);
+
+    // 设置JSON文档中的角色和内容
+    jsoncon["role"] = role;
+    jsoncon["content"] = content;
+    Serial.print("jsoncon中的内容为：");
+    Serial.println(jsoncon.as<String>());
+
+    // 将生成的JSON文档添加到全局变量text中
+    text.add(jsoncon);
+
+    // 清空临时JSON文档
+    // jsoncon.clear();
+
+    // 序列化全局变量text中的内容为字符串
+    String serialized;
+    serializeJson(text, serialized);
+
+    // 清空临时JSON文档
+    jsoncon.clear();
+
+    // 输出序列化后的JSON字符串到串口
+    Serial.print("text中的内容为: ");
+    Serial.println(serialized);
+
+    // 也可以使用格式化的方式输出JSON，以下代码被注释掉了
+    // serializeJsonPretty(text, Serial);
+}
+
+int getLength(JsonArray textArray)
+{
+    int length = 0; // 初始化长度变量
+
+    // 遍历JSON数组中的每个对象
+    for (JsonObject content : textArray)
+    {
+        // 获取对象中的"content"字段值
+        const char *temp = content["content"];
+
+        // 计算"content"字段字符串的长度
+        int leng = strlen(temp) + 60;
+
+        // 累加每个字符串的长度
+        length += leng;
+    }
+
+    // 返回累加后的总长度
+    return length;
+}
+
+// 实时清理较早的历史对话记录
+void checkLen(JsonArray textArray)
+{
+    // 当JSON数组中的字符串总长度超过2048字节时，进入循环
+    if (getLength(textArray) > 2048)
+    {
+        // 移除数组中的第一对问答
+        textArray.remove(0);
+        textArray.remove(0);
+    }
+    // 函数没有返回值，直接修改传入的JSON数组
+    // return textArray; // 注释掉的代码，表明此函数不返回数组
 }
 
 DynamicJsonDocument gen_params(const char *appid, const char *domain)
