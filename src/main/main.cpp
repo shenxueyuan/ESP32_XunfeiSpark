@@ -33,7 +33,11 @@ String APPID = "e7df2284";                             // 星火大模型的App 
 String APIKey = "fbc15ca65a5bf76806a140e8b4600f71";    // API Key
 String APISecret = "YzMyMDE2YWExMzkyOWU0YmQ4YjIzZmE1"; // API Secret
 
-String answerHello = "嗯，收到";
+// 通义千问
+String qwenApiKey = "sk-b60fe4859ae942beb0e5d0cd118b567e";
+String qwenApiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
+
+String answerHello = "嗯，";
 
 // 定义一些全局变量
 bool ledstatus = true;
@@ -46,6 +50,7 @@ int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
 int textLimit=120; // 超过多长 要分割，立马播放
+int llmType = 2; // 1:讯飞AI 2:通义千问
 HTTPClient https; // 创建一个HTTP客户端对象
 
 hw_timer_t *timer = NULL; // 定义硬件定时器对象
@@ -73,8 +78,10 @@ void getText(String role, String content);
 void checkLen(JsonArray textArray);
 int getLength(JsonArray textArray);
 float calculateRMS(uint8_t *buffer, int bufferSize);
+String sendMsgToQwenAILLM(String queston);
+void segmentAnswer();
 void ConnServerAI();
-void sendMsgToAILLM();
+void sendMsgToXunfeiAILLM();
 void ConnServerASR();
 
 // 创建动态JSON文档对象和数组
@@ -93,7 +100,7 @@ void displayWrappedText(const string &text1, int x, int y, int maxWidth);
 String askquestion = "";
 String welcome = "Hi，小朋友，快来跟大象聊天吧";
 String Answer = ""; // 用于语音合成，要分段
-String roleContent = "你是一个出色的儿童陪伴机器人，你的名字叫大象，你能够以诙谐有趣的语言，简略回答儿童的提问，能够站在儿童的心里思考问题。回答问题时，能够引导儿童身心健康，纠正错误思想观念，引导家庭和谐，并且答案缩减到150字以内;";
+String roleContent = "你是一个儿童陪伴机器人，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
 std::vector<String> subAnswers;
 int subindex = 0;
 String text_temp = "";
@@ -245,7 +252,7 @@ void onEventsCallbackAI(WebsocketsEvent event, String data)
     // 当WebSocket连接打开时触发
     if (event == WebsocketsEvent::ConnectionOpened)
     {
-        sendMsgToAILLM();
+        sendMsgToXunfeiAILLM();
         // 向串口输出提示信息
         Serial.println("Send message to server-ai!");
     }
@@ -269,9 +276,8 @@ void onEventsCallbackAI(WebsocketsEvent event, String data)
     }
 }
 
-void sendMsgToAILLM()
+void sendMsgToXunfeiAILLM()
 {
-
     // 生成连接参数的JSON文档
     DynamicJsonDocument jsonData = gen_params(appId1, domain1);
 
@@ -284,6 +290,81 @@ void sendMsgToAILLM()
 
     // 通过WebSocket客户端发送JSON字符串到服务器
     webSocketClientAI.send(jsonString);
+}
+
+
+String sendMsgToQwenAILLM(String inputText) 
+{
+  HTTPClient http;
+  http.setTimeout(10000);
+  http.begin(qwenApiUrl);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", String(qwenApiKey));
+  String payload = "{\"model\":\"qwen-turbo\",\"input\":{\"messages\":[{\"role\": \"system\",\"content\": \""+roleContent+"\"},{\"role\": \"user\",\"content\": \"" + inputText + "\"}]}}";
+  int httpResponseCode = http.POST(payload);
+  if (httpResponseCode == 200) {
+    String response = http.getString();
+    http.end();
+    // Serial.println(response);
+
+    // Parse JSON response
+    DynamicJsonDocument jsonDoc(1024);
+    deserializeJson(jsonDoc, response);
+    String outputText = jsonDoc["output"]["text"];
+    // return outputText;
+    Serial.print("qwen--answer:");
+    Serial.println(outputText);
+    return outputText;
+  } else {
+    http.end();
+    Serial.printf("通义千问error %i \n", httpResponseCode);
+    return "";
+  }
+}
+
+
+// 将内容分割成小段
+void segmentAnswer(){
+    String answer = "";
+    if(Answer == ""){
+        return;
+    }
+    int lastPeriodIndex = Answer.indexOf("。");
+
+    if (lastPeriodIndex != -1){
+        answer = Answer.substring(0, lastPeriodIndex + 1);
+        subAnswers.push_back(answer.c_str());
+        Serial.println("answer385:"+answer);
+
+        Answer = Answer.substring(lastPeriodIndex + 2);
+
+        startPlay = true;
+    }
+    
+    const char *chinesePunctuation = "。！？，：；,.";
+
+    int lastChineseSentenceIndex = -1;
+
+    for (int i = 0; i < Answer.length(); ++i){
+        char currentChar = Answer.charAt(i);
+        if (strchr(chinesePunctuation, currentChar) != NULL){
+            lastChineseSentenceIndex = i;
+        }
+    }
+    if (lastChineseSentenceIndex != -1){
+        answer = Answer.substring(0, lastChineseSentenceIndex + 1);
+        subAnswers.push_back(answer.c_str());
+        startPlay = true;
+        Answer = Answer.substring(lastChineseSentenceIndex + 2);
+        segmentAnswer();
+    }else{
+        answer = Answer.substring(0, Answer.length());
+        subAnswers.push_back(answer.c_str());
+        startPlay = true;
+        Answer = "";
+        Serial.println("answer408:"+answer);
+    }
+    
 }
 
 // 将接收到的语音转成文本
@@ -356,15 +437,24 @@ void onMessageCallbackASR(WebsocketsMessage message)
             else
             {
              
+
+
                 // 处理一般的问答请求
-                getText("user", askquestion);
-                Serial.print("text:");
-                Serial.println(text);
+                
                 Answer = "";
                 lastsetence = false;
                 isReady = true;
-
-                ConnServerAI();
+                if(llmType==1){
+                    getText("user", askquestion);
+                    Serial.print("text:");
+                    Serial.println(text);
+                    // 发送给大模型
+                    ConnServerAI();
+                }else if(llmType ==2){
+                    Answer = sendMsgToQwenAILLM(askquestion);
+                    segmentAnswer();
+                    // audioTTS.connecttospeech(Answer.c_str(),"zh");
+                }
             }
         }
     }
@@ -558,14 +648,16 @@ void voicePlay()
     {
         if (subindex < subAnswers.size())
         {
+            delay(300);
             audioTTS.connecttospeech(subAnswers[subindex].c_str(), "zh");
-            Serial.print("speech-line592");
+            Serial.println("speech-line592："+subAnswers[subindex]);
             subindex++;
         }
         else
         {
             audioTTS.connecttospeech(Answer.c_str(), "zh");
             Answer = "";
+            startPlay = false;
         }
         // 设置开始播放标志
         startPlay = true;
