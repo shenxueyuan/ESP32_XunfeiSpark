@@ -37,7 +37,7 @@ String APISecret = "YzMyMDE2YWExMzkyOWU0YmQ4YjIzZmE1"; // API Secret
 String qwenApiKey = "sk-b60fe4859ae942beb0e5d0cd118b567e";
 String qwenApiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
 
-String answerHello = "嗯，";
+String answerHello = "嗯，收到。";
 
 // 定义一些全局变量
 bool ledstatus = true;
@@ -405,7 +405,9 @@ void onMessageCallbackASR(WebsocketsMessage message)
         Serial.println(message.data());
         receiveFrame = 0;
 
-        audioTTS.connecttospeech(answerHello.c_str(), "zh");
+        if(llmType==1){
+            audioTTS.connecttospeech(answerHello.c_str(), "zh");
+        }
 
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
@@ -436,11 +438,8 @@ void onMessageCallbackASR(WebsocketsMessage message)
             }
             else
             {
-             
 
-
-                // 处理一般的问答请求
-                
+                // 处理一般的问答请求                
                 Answer = "";
                 lastsetence = false;
                 isReady = true;
@@ -648,7 +647,7 @@ void voicePlay()
     {
         if (subindex < subAnswers.size())
         {
-            delay(300);
+            delay(200);
             audioTTS.connecttospeech(subAnswers[subindex].c_str(), "zh");
             Serial.println("speech-line592："+subAnswers[subindex]);
             subindex++;
@@ -1037,7 +1036,6 @@ void loop()
         flag = 0;
         subindex = 0;
         subAnswers.clear();
-        textLimit = 50;
         // answerTemp = "";
         // text.clear();
         Serial.printf("Start recognition\r\n\r\n");
