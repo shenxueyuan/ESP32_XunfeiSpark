@@ -407,9 +407,9 @@ void onMessageCallbackASR(WebsocketsMessage message)
         Serial.println(message.data());
         receiveFrame = 0;
 
-        if(llmType==1){
+        // if(llmType==1){
             audioTTS.connecttospeech(answerHello.c_str(), "zh");
-        }
+        // }
 
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
@@ -517,7 +517,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             }
 
             // 如果静音达到8个周期，发送结束标志的音频数据
-            if (silence == 5)
+            if (silence == 8)
             {
                 data["status"] = 2;
                 data["format"] = "audio/L16;rate=8000";
@@ -1028,39 +1028,44 @@ void loop()
     // 检测按键是否按下
     if (digitalRead(key_boot) == LOW || digitalRead(key_speak) == LOW)
     {
-        delay(200);
-        Serial.print("loopcount：");
-        Serial.println(loopcount);
-        loopcount++;
-        // 停止播放音频
-        audioTTS.isplaying = 0;        
-        startPlay = false;
-        isReady = false;
-        Answer = "";
-        flag = 0;
-        subindex = 0;
-        subAnswers.clear();
-        Serial.printf("Start recognition\r\n\r\n");
+        delay(40);
+        // 避免抖动
+        if(digitalRead(key_boot) == LOW || digitalRead(key_speak) == LOW){
+            delay(200);
+            Serial.print("loopcount：");
+            Serial.println(loopcount);
+            loopcount++;
+            // 停止播放音频
+            audioTTS.isplaying = 0;
+            startPlay = false;
+            isReady = false;
+            Answer = "";
+            flag = 0;
+            subindex = 0;
+            subAnswers.clear();
+            Serial.printf("Start recognition\r\n\r\n");
 
-        adc_start_flag = 1;
+            adc_start_flag = 1;
 
-        // 如果距离上次时间同步超过4分钟
-        if (urlTime + 240000 < millis()) // 超过4分钟，重新做一次鉴权
-        {
-            // 更新时间戳
-            urlTime = millis();
-            // 从服务器获取当前时间
-            getTimeFromServer();
-            // 更新WebSocket连接的URL
-            url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-            url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
+            // 如果距离上次时间同步超过4分钟
+            if (urlTime + 240000 < millis()) // 超过4分钟，重新做一次鉴权
+            {
+                // 更新时间戳
+                urlTime = millis();
+                // 从服务器获取当前时间
+                getTimeFromServer();
+                // 更新WebSocket连接的URL
+                url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
+                url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
+            }
+            askquestion = "";
+
+            // 连接到WebSocket服务器-语音识别
+            ConnServerASR();
+            // audioTTS.stopSong();
+            adc_complete_flag = 0;
+
         }
-        askquestion = "";
-
-        // 连接到WebSocket服务器-语音识别
-        ConnServerASR();
-
-        adc_complete_flag = 0;
     }
 }
  
