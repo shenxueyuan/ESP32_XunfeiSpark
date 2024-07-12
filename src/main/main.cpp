@@ -98,9 +98,9 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain);
 void displayWrappedText(const string &text1, int x, int y, int maxWidth);
 
 String askquestion = "";
-String welcome = "Hi，小朋友，快来跟大象聊天吧";
+String welcome = "小朋友，你好啊，快来跟大象聊天吧";
 String Answer = ""; // 用于语音合成，要分段
-String roleContent = "你是一个儿童陪伴机器人，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
+String roleContent = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
 std::vector<String> subAnswers;
 int subindex = 0;
 String text_temp = "";
@@ -334,8 +334,6 @@ void segmentAnswer(){
     if (lastPeriodIndex != -1){
         answer = Answer.substring(0, lastPeriodIndex + 1);
         subAnswers.push_back(answer.c_str());
-        Serial.println("answer385:"+answer);
-
         Answer = Answer.substring(lastPeriodIndex + 2);
 
         startPlay = true;
@@ -353,16 +351,19 @@ void segmentAnswer(){
     }
     if (lastChineseSentenceIndex != -1){
         answer = Answer.substring(0, lastChineseSentenceIndex + 1);
-        subAnswers.push_back(answer.c_str());
-        startPlay = true;
+        if(answer.length() >= 5){
+            subAnswers.push_back(answer.c_str());
+            startPlay = true;
+        }
         Answer = Answer.substring(lastChineseSentenceIndex + 2);
         segmentAnswer();
     }else{
         answer = Answer.substring(0, Answer.length());
-        subAnswers.push_back(answer.c_str());
-        startPlay = true;
+        if(answer.length() >= 5){
+            subAnswers.push_back(answer.c_str());
+            startPlay = true;
+        }
         Answer = "";
-        Serial.println("answer408:"+answer);
     }
     
 }
@@ -438,7 +439,6 @@ void onMessageCallbackASR(WebsocketsMessage message)
             }
             else
             {
-
                 // 处理一般的问答请求                
                 Answer = "";
                 lastsetence = false;
@@ -452,7 +452,6 @@ void onMessageCallbackASR(WebsocketsMessage message)
                 }else if(llmType ==2){
                     Answer = sendMsgToQwenAILLM(askquestion);
                     segmentAnswer();
-                    // audioTTS.connecttospeech(Answer.c_str(),"zh");
                 }
             }
         }
@@ -517,7 +516,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             }
 
             // 如果静音达到8个周期，发送结束标志的音频数据
-            if (silence == 8)
+            if (silence == 5)
             {
                 data["status"] = 2;
                 data["format"] = "audio/L16;rate=8000";
@@ -1029,15 +1028,13 @@ void loop()
         Serial.println(loopcount);
         loopcount++;
         // 停止播放音频
-        audioTTS.isplaying = 0;
+        audioTTS.isplaying = 0;        
         startPlay = false;
         isReady = false;
         Answer = "";
         flag = 0;
         subindex = 0;
         subAnswers.clear();
-        // answerTemp = "";
-        // text.clear();
         Serial.printf("Start recognition\r\n\r\n");
 
         adc_start_flag = 1;
@@ -1151,7 +1148,7 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain)
     JsonObject chat = parameter.createNestedObject("chat");
     chat["domain"] = domain;
     chat["temperature"] = 0.5;
-    chat["max_tokens"] = 1024;
+    chat["max_tokens"] = 512;
 
     // 创建一个名为payload的嵌套JSON对象
     JsonObject payload = data.createNestedObject("payload");

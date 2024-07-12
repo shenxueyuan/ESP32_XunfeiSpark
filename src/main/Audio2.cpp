@@ -920,9 +920,9 @@ bool Audio2::connecttospeech(const char *speech, const char *lang)
     strcat(resp, "cuid=AIFWYVLm5xw8l7zVDWPnwBMAURmvPd6C&");// 唯一标识计算UV值，建议 机器MAC、或者IMEI码
     strcat(resp, "ctp=1&");
     strcat(resp, "lan=zh&");//
-    strcat(resp, "spd=5&");// 语速 0-9
-    strcat(resp, "pit=5&");// 音调0-9
-    strcat(resp, "vol=5&");// 音量0-15
+    strcat(resp, "spd=6&");// 语速 0-9
+    strcat(resp, "pit=6&");// 音调0-9
+    strcat(resp, "vol=6&");// 音量0-15
     strcat(resp, "per=5118&");//发音人 https://ai.baidu.com/ai-doc/SPEECH/Rluv3uq3d
     strcat(resp, "aue=3");// 下载的文件格式, 3：mp3(default) 4： pcm-16k 5： pcm-8k 6. wav
 
