@@ -18,7 +18,8 @@
 using namespace websockets;
 
 // 定义引脚和常量
-#define key 0   // 按键引脚
+#define key_boot 0   // boot按键引脚
+#define key_speak 23 // 外置按键引脚
 #define led 2   //板载led引脚
 
 // AP 模式的SSID和密码
@@ -942,7 +943,9 @@ void setup()
 
     // 配置引脚模式
     // 配置按键引脚为上拉输入模式，用于boot按键检测
-    pinMode(key, INPUT_PULLUP);
+    pinMode(key_boot, INPUT_PULLUP);
+    // 外置按钮检测
+    pinMode(key_speak, INPUT_PULLUP);
     // 将GPIO2设置为输出模式
     pinMode(led, OUTPUT);
 
@@ -1021,9 +1024,11 @@ void loop()
         }
     }
 
+
     // 检测按键是否按下
-    if (digitalRead(key) == 0)
+    if (digitalRead(key_boot) == LOW || digitalRead(key_speak) == LOW)
     {
+        delay(200);
         Serial.print("loopcount：");
         Serial.println(loopcount);
         loopcount++;
