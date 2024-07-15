@@ -63,6 +63,9 @@ uint8_t adc_complete_flag = 0;
 // 创建音频对象
 Audio1 audioRecord;
 Audio2 audioTTS(false, 3, I2S_NUM_1); // 参数: 是否使用SD卡, 音量, I2S端口号
+// 参数: 是否使用内部DAC（数模转换器）如果设置为true，将使用ESP32的内部DAC进行音频输出。否则，将使用外部I2S设备。
+// 指定启用的音频通道。可以设置为1（只启用左声道）或2（只启用右声道）或3（启用左右声道）
+// 指定使用哪个I2S端口。ESP32有两个I2S端口，I2S_NUM_0和I2S_NUM_1。可以根据需要选择不同的I2S端口。
 
 // 定义I2S引脚
 #define I2S_DOUT 27 // DIN引脚
@@ -110,7 +113,7 @@ String text_temp = "";
 const char *appId1 = "e7df2284"; // 替换为自己的星火大模型参数
 const char *domain1 = "4.0Ultra";
 const char *websockets_server = "ws://spark-api.xf-yun.com/v4.0/chat";
-const char *websockets_server1 = "ws://ws-api.xfyun.cn/v2/iat";
+const char *websockets_server1 = "ws://iat-api.xfyun.cn/v2/iat";
 using namespace websockets; // 使用WebSocket命名空间
 
 // 创建WebSocket客户端对象
@@ -119,6 +122,7 @@ WebsocketsClient webSocketClientASR;
 
 int loopcount = 0; // 循环计数器
 int flag = 0;       // 用来确保subAnswer1一定是大模型回答最开始的内容
+int conflag = 0;
 
 // 移除讯飞星火回复中没用的符号
 void removeChars(const char *input, char *output, const char *removeSet)
@@ -232,6 +236,7 @@ void onMessageCallbackAI(WebsocketsMessage message)
                     }
                 }
                 startPlay = true;
+                conflag = 1;
             }
 
             if (status == 2)
@@ -241,6 +246,8 @@ void onMessageCallbackAI(WebsocketsMessage message)
                 {
                     audioTTS.connecttospeech(Answer.c_str(), "zh");
                     Serial.print("speech-line244");
+                    Answer = "";
+                    conflag = 1;
                 }
             }
         }
@@ -435,7 +442,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
             // 如果问句为空，播放错误提示语音
             if (askquestion == "")
             {
-                askquestion = "sorry, i can't hear you";
+                askquestion = "对不起，我没有听清，可以再说一遍嘛？";
                 audioTTS.connecttospeech(askquestion.c_str(), "zh");
             }
             else
@@ -474,6 +481,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
         int j = 0;
         int voicebegin = 0;
         int voice = 0;
+        int null_voice = 0;
 
         // 创建一个JSON文档对象
         DynamicJsonDocument doc(2500);
@@ -494,9 +502,17 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             float rms = calculateRMS((uint8_t *)audioRecord.wavData[0], 1280);
             printf("%d %f\n", 0, rms);
 
+            if(null_voice >= 60)
+            {
+                audioTTS.connecttospeech("语音输入超时，本轮对话结束！请重新开启对话。","zh");
+                webSocketClientASR.close();
+                return;
+            }
+
             // 判断是否为噪音
             if (rms < noise)
             {
+                null_voice ++;
                 if (voicebegin == 1)
                 {
                     silence++;
@@ -643,20 +659,31 @@ void ConnServerASR()
 void voicePlay()
 {
     // 检查音频是否正在播放以及回答内容是否为空
-    if ((audioTTS.isplaying == 0) && (Answer != "" || subindex < subAnswers.size()))
+    if ((audioTTS.isplaying == 0) && (Answer != "" || subindex <= subAnswers.size()))
     {
         if (subindex < subAnswers.size())
         {
             delay(200);
             audioTTS.connecttospeech(subAnswers[subindex].c_str(), "zh");
             Serial.println("speech-line592："+subAnswers[subindex]);
+            Serial.print("subindex669:" );
+            Serial.println(subindex);
+            Serial.print("subAnswers.size():");
+            Serial.println(subAnswers.size());
             subindex++;
+            conflag = 1;
         }
         else
         {
             audioTTS.connecttospeech(Answer.c_str(), "zh");
+            Serial.println("speech-line674："+subAnswers[subindex]);
+            Serial.print("subindex679:" );
+            Serial.println(subindex);
+            Serial.print("subAnswers.size():");
+            Serial.println(subAnswers.size());
             Answer = "";
             startPlay = false;
+            conflag = 1;
         }
         // 设置开始播放标志
         startPlay = true;
@@ -978,7 +1005,7 @@ void setup()
 
     // 使用当前日期生成WebSocket连接的URL
     url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-    url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
+    url1 = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
 
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
@@ -1020,7 +1047,7 @@ void loop()
             getTimeFromServer();
             // 更新WebSocket连接的URL
             url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-            url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
+            url1 = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
         }
     }
 
@@ -1031,44 +1058,54 @@ void loop()
         delay(40);
         // 避免抖动
         if(digitalRead(key_boot) == LOW || digitalRead(key_speak) == LOW){
-            delay(200);
-            Serial.print("loopcount：");
-            Serial.println(loopcount);
-            loopcount++;
-            // 停止播放音频
-            audioTTS.isplaying = 0;
-            startPlay = false;
-            isReady = false;
-            Answer = "";
-            flag = 0;
-            subindex = 0;
-            subAnswers.clear();
-            Serial.printf("Start recognition\r\n\r\n");
-
-            adc_start_flag = 1;
-
-            // 如果距离上次时间同步超过4分钟
-            if (urlTime + 240000 < millis()) // 超过4分钟，重新做一次鉴权
-            {
-                // 更新时间戳
-                urlTime = millis();
-                // 从服务器获取当前时间
-                getTimeFromServer();
-                // 更新WebSocket连接的URL
-                url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-                url1 = getUrl("ws://ws-api.xfyun.cn/v2/iat", "ws-api.xfyun.cn", "/v2/iat", Date);
-            }
-            askquestion = "";
-
-            // 连接到WebSocket服务器-语音识别
-            ConnServerASR();
-            // audioTTS.stopSong();
-            adc_complete_flag = 0;
-
+            clickAndStart();
         }
     }
+    // 添加连续对话功能
+    if (audioTTS.isplaying == 0 && Answer == "" && subindex == subAnswers.size() && conflag == 1)
+    {
+        Serial.println("开启连续对话...");
+        clickAndStart();
+    }
 }
- 
+
+void clickAndStart()
+{
+    delay(200);
+    conflag = 0;
+    Serial.print("loopcount：");
+    Serial.println(loopcount);
+    loopcount++;
+    // 停止播放音频
+    audioTTS.isplaying = 0;
+    startPlay = false;
+    isReady = false;
+    Answer = "";
+    flag = 0;
+    subindex = 0;
+    subAnswers.clear();
+    Serial.printf("Start recognition\r\n\r\n");
+
+    adc_start_flag = 1;
+
+    // 如果距离上次时间同步超过4分钟
+    if (urlTime + 240000 < millis()) // 超过4分钟，重新做一次鉴权
+    {
+        // 更新时间戳
+        urlTime = millis();
+        // 从服务器获取当前时间
+        getTimeFromServer();
+        // 更新WebSocket连接的URL
+        url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
+        url1 = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
+    }
+    askquestion = "";
+
+    // 连接到WebSocket服务器-语音识别
+    ConnServerASR();
+    // audioTTS.stopSong();
+    adc_complete_flag = 0;
+}
 
 // 显示文本
 void getText(String role, String content)
