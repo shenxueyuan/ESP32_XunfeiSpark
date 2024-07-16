@@ -462,13 +462,13 @@ void onMessageCallbackASR(WebsocketsMessage message)
 
                 int val = askquestion.indexOf(wifiStrOpen);
                 int val2 = askquestion.indexOf(wifiStrClose);
-                if(val!=-1){
-                    wifiFlag = true;
-                    startWIfiAP(true);
-                }else if(val2!=1){
-                    wifiFlag = false;
-                    startWIfiAP(false);
-                }
+                // if(val!=-1){
+                //     wifiFlag = true;
+                //     startWIfiAP(true);
+                // }else if(val2!=1){
+                //     wifiFlag = false;
+                //     startWIfiAP(false);
+                // }
                 
                 if(llmType==1){
                     getText("user", askquestion);
@@ -478,6 +478,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
                     ConnServerAI();
                 }else if(llmType ==2){
                     Answer = sendMsgToQwenAILLM(askquestion);
+                    Answer +="回答完毕。";
                     segmentAnswer();
                 }
             }
@@ -767,10 +768,10 @@ int wifiConnect()
                 Serial.printf("\r\n-- wifi connect success! --\r\n");
                 Serial.print("IP address: ");
                 Serial.println(WiFi.localIP());
-                if(!wifiFlag){
-                    // WIFI 连接成功，关闭WIFI AP
-                    startWIfiAP(false);
-                }
+                // if(!wifiFlag){
+                //     // WIFI 连接成功，关闭WIFI AP
+                //     startWIfiAP(false);
+                // }
                 // 启动成功后欢迎语
                 audioTTS.connecttospeech(welcome.c_str(), "zh");
                 // 输出当前空闲堆内存大小
