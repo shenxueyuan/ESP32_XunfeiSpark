@@ -39,6 +39,11 @@ String qwenApiKey = "sk-b60fe4859ae942beb0e5d0cd118b567e";
 String qwenApiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
 
 String answerHello = "嗯，收到。";
+String answerHello2 = "嗯。";
+boolean wifiFlag = true;
+String wifiStrOpen = "打开网络";
+String wifiStrClose = "关闭网络";
+
 
 // 定义一些全局变量
 bool ledstatus = true;
@@ -87,6 +92,7 @@ void segmentAnswer();
 void ConnServerAI();
 void sendMsgToXunfeiAILLM();
 void ConnServerASR();
+void startWIfiAP(bool isOpen);
 
 // 创建动态JSON文档对象和数组
 DynamicJsonDocument doc(4096);
@@ -414,9 +420,11 @@ void onMessageCallbackASR(WebsocketsMessage message)
         Serial.println(message.data());
         receiveFrame = 0;
 
-        // if(llmType==1){
+        if(llmType==1){
             audioTTS.connecttospeech(answerHello.c_str(), "zh");
-        // }
+        }else{
+            audioTTS.connecttospeech(answerHello2.c_str(), "zh");
+        }
 
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
@@ -451,6 +459,17 @@ void onMessageCallbackASR(WebsocketsMessage message)
                 Answer = "";
                 lastsetence = false;
                 isReady = true;
+
+                int val = askquestion.indexOf(wifiStrOpen);
+                int val2 = askquestion.indexOf(wifiStrClose);
+                if(val!=-1){
+                    wifiFlag = true;
+                    startWIfiAP(true);
+                }else if(val2!=1){
+                    wifiFlag = false;
+                    startWIfiAP(false);
+                }
+                
                 if(llmType==1){
                     getText("user", askquestion);
                     Serial.print("text:");
@@ -748,6 +767,10 @@ int wifiConnect()
                 Serial.printf("\r\n-- wifi connect success! --\r\n");
                 Serial.print("IP address: ");
                 Serial.println(WiFi.localIP());
+                if(!wifiFlag){
+                    // WIFI 连接成功，关闭WIFI AP
+                    startWIfiAP(false);
+                }
                 // 启动成功后欢迎语
                 audioTTS.connecttospeech(welcome.c_str(), "zh");
                 // 输出当前空闲堆内存大小
@@ -978,16 +1001,7 @@ void setup()
     // 初始化音频模块audioRecord
     audioRecord.init();
 
-    // 启动 AP 模式创建热点
-    WiFi.softAP(ap_ssid, ap_password);
-    Serial.println("Started Access Point");
-    // 启动 Web 服务器
-    server.on("/", HTTP_GET, handleRoot);
-    server.on("/save", HTTP_POST, handleSave);
-    server.on("/delete", HTTP_POST, handleDelete);
-    server.on("/list", HTTP_GET, handleList);
-    server.begin();
-    Serial.println("WebServer started, waiting for configuration...");
+    startWIfiAP(true);
 
     // 初始化 Preferences
     preferences.begin("wifi-config");
@@ -1008,7 +1022,24 @@ void setup()
 
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
+}
 
+void startWIfiAP(bool isOpen)
+{
+    if(isOpen){
+        // 启动 AP 模式创建热点
+        WiFi.softAP(ap_ssid, ap_password);
+        Serial.println("Started Access Point");
+        // 启动 Web 服务器
+        server.on("/", HTTP_GET, handleRoot);
+        server.on("/save", HTTP_POST, handleSave);
+        server.on("/delete", HTTP_POST, handleDelete);
+        server.on("/list", HTTP_GET, handleList);
+        server.begin();
+        Serial.println("WebServer started, waiting for configuration...");
+    }else{
+        WiFi.softAPdisconnect(true);
+    }
 }
 
 void loop()
@@ -1080,6 +1111,7 @@ void clickAndStart()
     conflag = 0;
     Serial.print("loopcount：");
     Serial.println(loopcount);
+
     loopcount++;
     // 停止播放音频
     audioTTS.isplaying = 0;
@@ -1090,7 +1122,6 @@ void clickAndStart()
     subindex = 0;
     subAnswers.clear();
     Serial.printf("Start recognition\r\n\r\n");
-
     adc_start_flag = 1;
 
     // 如果距离上次时间同步超过4分钟
