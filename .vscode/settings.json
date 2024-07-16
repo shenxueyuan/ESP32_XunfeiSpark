@@ -6,5 +6,5 @@
         "streambuf": "cpp",
         "regex": "cpp"
     },
-    "idf.port": "/dev/tty.usbserial-141330"
+    "idf.port": "/dev/tty.usbserial-141340"
 }

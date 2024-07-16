@@ -94,7 +94,7 @@ JsonArray text = doc.to<JsonArray>();
 
 // 定义字符串变量
 String url = "";
-String url1 = "";
+String urlASR = "";
 String Date = "";
 
 // 函数声明
@@ -641,12 +641,12 @@ void ConnServerAI()
 
 void ConnServerASR()
 {
-    // Serial.println("url1:" + url1);
+    // Serial.println("urlASR:" + urlASR);
     webSocketClientASR.onMessage(onMessageCallbackASR);
     webSocketClientASR.onEvent(onEventsCallbackASR);
     // Connect to WebSocket
     Serial.println("Begin connect to server-asr......");
-    if (webSocketClientASR.connect(url1.c_str()))
+    if (webSocketClientASR.connect(urlASR.c_str()))
     {
         Serial.println("Connected to server-asr!");
     }
@@ -711,7 +711,7 @@ int wifiConnect()
     {
         String ssid = preferences.getString(("ssid" + String(i)).c_str(), "");
         String password = preferences.getString(("password" + String(i)).c_str(), "");
-
+        
         // 尝试连接到存储的 WiFi 网络
         if (ssid.length() > 0 && password.length() > 0)
         {
@@ -720,7 +720,6 @@ int wifiConnect()
             Serial.print("password:");
             Serial.println(password);
             
-
             uint8_t count = 0;
             WiFi.begin(ssid.c_str(), password.c_str());
             // 等待WiFi连接成功
@@ -1005,7 +1004,7 @@ void setup()
 
     // 使用当前日期生成WebSocket连接的URL
     url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-    url1 = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
+    urlASR = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
 
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
@@ -1047,7 +1046,7 @@ void loop()
             getTimeFromServer();
             // 更新WebSocket连接的URL
             url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-            url1 = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
+            urlASR = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
         }
     }
 
@@ -1097,7 +1096,7 @@ void clickAndStart()
         getTimeFromServer();
         // 更新WebSocket连接的URL
         url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-        url1 = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
+        urlASR = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
     }
     askquestion = "";
 
