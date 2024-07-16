@@ -1051,12 +1051,18 @@ void loop()
     }
 
 
-    // 检测按键是否按下
-    if (digitalRead(key_boot) == LOW || digitalRead(key_speak) == LOW)
+    // boot检测按键是否按下
+    if (digitalRead(key_boot) == LOW)
+    {
+        clickAndStart();
+    }
+    // 外置检测按键是否按下
+    if (digitalRead(key_speak) == LOW)
     {
         delay(40);
         // 避免抖动
-        if(digitalRead(key_boot) == LOW || digitalRead(key_speak) == LOW){
+        if(digitalRead(key_speak) == LOW){
+            delay(200);
             clickAndStart();
         }
     }
@@ -1070,7 +1076,7 @@ void loop()
 
 void clickAndStart()
 {
-    delay(200);
+    // delay(200);
     conflag = 0;
     Serial.print("loopcount：");
     Serial.println(loopcount);
