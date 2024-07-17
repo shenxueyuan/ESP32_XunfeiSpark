@@ -561,10 +561,12 @@ int dealCommand(){
     {
         if(askquestion.indexOf("最大")>-1){
             volume = 100;
+            preferences.putInt("valume", volume);
             audioTTS.setVolume(volume);
             askquestion = "音量已调到最大，注意保护耳朵哦";
         }else if(volume < 100){
             volume = volume + 10;
+            preferences.putInt("valume", volume);
             audioTTS.setVolume(volume);
             askquestion = "已为你增大音量";
         }else{
@@ -580,10 +582,12 @@ int dealCommand(){
     {   
         if(askquestion.indexOf("最小") >-1){
             volume = 30;
+            preferences.putInt("valume", volume);
             audioTTS.setVolume(volume);
             askquestion = "音量减到最小了";   
         }else if(volume>=40){
             volume = volume - 10;
+            preferences.putInt("valume", volume);
             askquestion = "已为你减小音量";
             audioTTS.setVolume(volume);
         }else{
@@ -1137,6 +1141,7 @@ void setup()
     preferences.begin("wifi-config");
 
     per = preferences.getString("per","5118");
+    
 
     addWifi();
     int result = wifiConnect();
@@ -1144,6 +1149,7 @@ void setup()
     // 从服务器获取当前时间
     getTimeFromServer();
 
+    volume = preferences.getInt("volume",50);
     // 设置音频输出引脚和音量
     audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
     audioTTS.setVolume(volume);
