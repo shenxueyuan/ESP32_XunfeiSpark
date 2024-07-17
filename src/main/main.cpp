@@ -110,7 +110,7 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain);
 void displayWrappedText(const string &text1, int x, int y, int maxWidth);
 
 String askquestion = "";
-String welcome = "小朋友，你好啊，快来跟大象聊天吧";
+String welcome = "小朋友，我是大象，快来跟我聊天吧";
 String welcomeATM = "小朋友，我是赛文奥特曼，让我们一起来拯救地球吧！";
 String Answer = ""; // 用于语音合成，要分段
 String roleContent = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
