@@ -884,7 +884,7 @@ void Audio2::UTF8toASCII(char *str)
 //---------------------------------------------------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------------------------------------------------
-bool Audio2::connecttospeech(const char *speech, const char *lang)
+bool Audio2::connecttospeech(const char *speech, const char *lang, const char *per)
 {
 
     xSemaphoreTakeRecursive(mutex_audio, portMAX_DELAY);
@@ -923,8 +923,9 @@ bool Audio2::connecttospeech(const char *speech, const char *lang)
     strcat(resp, "spd=6&");// 语速 0-9
     strcat(resp, "pit=6&");// 音调0-9
     strcat(resp, "vol=6&");// 音量0-15
-    strcat(resp, "per=5118&");//发音人 https://ai.baidu.com/ai-doc/SPEECH/Rluv3uq3d
-    strcat(resp, "aue=3");// 下载的文件格式, 3：mp3(default) 4： pcm-16k 5： pcm-8k 6. wav
+    strcat(resp, "per=");//发音人 https://ai.baidu.com/ai-doc/SPEECH/Rluv3uq3d
+    strcat(resp, per);
+    strcat(resp, "&aue=3");// 下载的文件格式, 3：mp3(default) 4： pcm-16k 5： pcm-8k 6. wav
 
     if (speechBuff)
     {

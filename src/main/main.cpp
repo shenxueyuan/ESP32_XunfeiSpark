@@ -81,6 +81,7 @@ void handleRoot(AsyncWebServerRequest *request);
 void handleSave(AsyncWebServerRequest *request);
 void handleDelete(AsyncWebServerRequest *request);
 void handleList(AsyncWebServerRequest *request);
+void connecttospeech(String content);
 void gain_token(void);
 void getText(String role, String content);
 void checkLen(JsonArray textArray);
@@ -102,6 +103,7 @@ JsonArray text = doc.to<JsonArray>();
 String url = "";
 String urlASR = "";
 String Date = "";
+String per = "5118";
 
 // 函数声明
 DynamicJsonDocument gen_params(const char *appid, const char *domain);
@@ -109,8 +111,11 @@ void displayWrappedText(const string &text1, int x, int y, int maxWidth);
 
 String askquestion = "";
 String welcome = "小朋友，你好啊，快来跟大象聊天吧";
+String welcomeATM = "小朋友，我是赛文奥特曼，让我们一起来拯救地球吧！";
 String Answer = ""; // 用于语音合成，要分段
 String roleContent = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
+String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
+
 std::vector<String> subAnswers;
 int subindex = 0;
 String text_temp = "";
@@ -208,7 +213,7 @@ void onMessageCallbackAI(WebsocketsMessage message)
                     Answer = Answer.substring(lastPeriodIndex + 2);
                     Serial.print("Answer-line200: ");
                     Serial.println(Answer);
-                    audioTTS.connecttospeech(answer.c_str(), "zh");
+                    connecttospeech(answer.c_str());
                     Serial.print("speech-line201");
                 }
                 else
@@ -229,14 +234,14 @@ void onMessageCallbackAI(WebsocketsMessage message)
                     if (lastChineseSentenceIndex != -1)
                     {
                         answer = Answer.substring(0, lastChineseSentenceIndex + 1);
-                        audioTTS.connecttospeech(answer.c_str(), "zh");
+                        connecttospeech(answer.c_str());
                         Serial.print("speech-line224");
                         Answer = Answer.substring(lastChineseSentenceIndex + 2);
                     }
                     else
                     {
                         answer = Answer.substring(0, textLimit);
-                        audioTTS.connecttospeech(answer.c_str(), "zh");
+                        connecttospeech(answer.c_str());
                         Serial.print("speech-line230");
                         Answer = Answer.substring(textLimit + 1);
                     }
@@ -250,7 +255,7 @@ void onMessageCallbackAI(WebsocketsMessage message)
                 getText("assistant", Answer);
                 if (audioTTS.isplaying == 0)
                 {
-                    audioTTS.connecttospeech(Answer.c_str(), "zh");
+                    connecttospeech(Answer.c_str());
                     Serial.print("speech-line244");
                     Answer = "";
                     conflag = 1;
@@ -259,6 +264,11 @@ void onMessageCallbackAI(WebsocketsMessage message)
         }
     }
 }
+
+void connecttospeech(String content){
+    audioTTS.connecttospeech(content.c_str(), "zh",per.c_str());
+}
+
 
 // 问题发送给大模型
 void onEventsCallbackAI(WebsocketsEvent event, String data)
@@ -421,9 +431,9 @@ void onMessageCallbackASR(WebsocketsMessage message)
         receiveFrame = 0;
 
         if(llmType==1){
-            audioTTS.connecttospeech(answerHello.c_str(), "zh");
+            connecttospeech(answerHello.c_str());
         }else{
-            audioTTS.connecttospeech(answerHello2.c_str(), "zh");
+            connecttospeech(answerHello2.c_str());
         }
 
         // 获取JSON数据中的结果部分，并提取文本内容
@@ -451,7 +461,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
             if (askquestion == "")
             {
                 askquestion = "未听到说话，本轮应答结束，请开启下一轮问答。";
-                audioTTS.connecttospeech(askquestion.c_str(), "zh");
+                connecttospeech(askquestion.c_str());
             }
             else
             {
@@ -487,7 +497,7 @@ int dealCommand(){
     {
         startWIfiAP(true);
         askquestion = "已为你打开网络";
-        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        connecttospeech(askquestion.c_str());
         askquestion = "";
         conflag = 1;
     }
@@ -495,14 +505,14 @@ int dealCommand(){
     {
         startWIfiAP(false);
         askquestion = "已为你关闭网络。";
-        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        connecttospeech(askquestion.c_str());
         askquestion = "";
         conflag = 1;
     }
     else if (askquestion.indexOf("开") > -1 && askquestion.indexOf("灯") > -1)
     {
         askquestion = "灯已打开";
-        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
         conflag = 1;
@@ -511,7 +521,7 @@ int dealCommand(){
     {
         askquestion = "已切换为讯飞星火大模型";
         llmType = 1;
-        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
         conflag = 1;
@@ -520,7 +530,29 @@ int dealCommand(){
     {
         askquestion = "已切换为通义千问大模型";
         llmType = 2;
-        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        connecttospeech(askquestion.c_str());
+        // 打印内容
+        askquestion = "";
+        conflag = 1;
+    }
+    else if ((askquestion.indexOf("切") > -1 || (askquestion.indexOf("换") > -1 )) && askquestion.indexOf("奥特曼") > -1)
+    {
+        askquestion = welcomeATM;
+        roleContent = roleAoteMan;
+        per = "5003";
+        preferences.putString("per", per);
+        connecttospeech(askquestion.c_str());
+        // 打印内容
+        askquestion = "";
+        conflag = 1;
+    }
+    else if ((askquestion.indexOf("切") > -1 || (askquestion.indexOf("换") > -1 )) && askquestion.indexOf("普通") > -1)
+    {
+        askquestion = welcome;
+        roleContent = roleAoteMan;
+        per = "5118";
+        preferences.putString("per", per);
+        connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
         conflag = 1;
@@ -533,7 +565,7 @@ int dealCommand(){
         }
         audioTTS.setVolume(volume);
         askquestion = "已为你增大音量";
-        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
         conflag = 1;
@@ -547,7 +579,7 @@ int dealCommand(){
         }else{
             askquestion = "音量减到最小了，再小就听不见啦。";    
         }
-        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
         conflag = 1;
@@ -555,14 +587,14 @@ int dealCommand(){
     else if (askquestion.indexOf("关") > -1 && askquestion.indexOf("灯") > -1)
     {
         askquestion = "灯已关闭";
-        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        connecttospeech(askquestion.c_str());
         askquestion = "";
         conflag = 1;
     }
     else if (askquestion.indexOf("退下") > -1 || askquestion.indexOf("再见") > -1 || askquestion.indexOf("拜拜") > -1)
     {
         askquestion = "好的，我先退下了，有事再找我。";
-        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        connecttospeech(askquestion.c_str());
         askquestion = "";
         conflag = 0;
     }else{
@@ -609,7 +641,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
 
             if(null_voice >= 60)
             {
-                audioTTS.connecttospeech("未听到说话，本轮应答结束，请开启下一轮问答。","zh");
+                connecttospeech("未听到说话，本轮应答结束，请开启下一轮问答。");
                 webSocketClientASR.close();
                 return;
             }
@@ -769,7 +801,7 @@ void voicePlay()
         if (subindex < subAnswers.size())
         {
             delay(200);
-            audioTTS.connecttospeech(subAnswers[subindex].c_str(), "zh");
+            connecttospeech(subAnswers[subindex].c_str());
             Serial.println("speech-line592："+subAnswers[subindex]);
             Serial.print("subindex669:" );
             Serial.println(subindex);
@@ -780,7 +812,7 @@ void voicePlay()
         }
         else
         {
-            audioTTS.connecttospeech(Answer.c_str(), "zh");
+            connecttospeech(Answer.c_str());
             Serial.println("speech-line674："+subAnswers[subindex]);
             Serial.print("subindex679:" );
             Serial.println(subindex);
@@ -853,12 +885,13 @@ int wifiConnect()
                 Serial.printf("\r\n-- wifi connect success! --\r\n");
                 Serial.print("IP address: ");
                 Serial.println(WiFi.localIP());
-                // if(!wifiFlag){
-                //     // WIFI 连接成功，关闭WIFI AP
-                //     startWIfiAP(false);
-                // }
+                
                 // 启动成功后欢迎语
-                audioTTS.connecttospeech(welcome.c_str(), "zh");
+                if(per.indexOf("5118") > -1){
+                    connecttospeech(welcome.c_str());
+                }else if(per.indexOf("3") > -1){
+                    connecttospeech(welcomeATM.c_str());
+                }
                 // 输出当前空闲堆内存大小
                 Serial.println("Free Heap: " + String(ESP.getFreeHeap()));
             
@@ -1086,11 +1119,13 @@ void setup()
 
     // 初始化音频模块audioRecord
     audioRecord.init();
-
+    
     startWIfiAP(true);
 
     // 初始化 Preferences
     preferences.begin("wifi-config");
+
+    per = preferences.getString("per","5118");
 
     addWifi();
     int result = wifiConnect();
