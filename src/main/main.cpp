@@ -39,10 +39,8 @@ String qwenApiKey = "sk-b60fe4859ae942beb0e5d0cd118b567e";
 String qwenApiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
 
 String answerHello = "嗯，收到。";
-String answerHello2 = "嗯。";
+String answerHello2 = "收到。";
 boolean wifiFlag = true;
-String wifiStrOpen = "打开网络";
-String wifiStrClose = "关闭网络";
 
 
 // 定义一些全局变量
@@ -55,6 +53,7 @@ unsigned long pushTime = 0;
 int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
+int volume = 50;// 音量大小
 int textLimit=120; // 超过多长 要分割，立马播放
 int llmType = 2; // 1:讯飞AI 2:通义千问
 HTTPClient https; // 创建一个HTTP客户端对象
@@ -89,6 +88,7 @@ int getLength(JsonArray textArray);
 float calculateRMS(uint8_t *buffer, int bufferSize);
 String sendMsgToQwenAILLM(String queston);
 void segmentAnswer();
+int dealCommand();
 void ConnServerAI();
 void sendMsgToXunfeiAILLM();
 void ConnServerASR();
@@ -450,7 +450,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
             // 如果问句为空，播放错误提示语音
             if (askquestion == "")
             {
-                askquestion = "对不起，我没有听清，可以再说一遍嘛？";
+                askquestion = "未听到说话，本轮应答结束，请开启下一轮问答。";
                 audioTTS.connecttospeech(askquestion.c_str(), "zh");
             }
             else
@@ -460,30 +460,115 @@ void onMessageCallbackASR(WebsocketsMessage message)
                 lastsetence = false;
                 isReady = true;
 
-                int val = askquestion.indexOf(wifiStrOpen);
-                int val2 = askquestion.indexOf(wifiStrClose);
-                // if(val!=-1){
-                //     wifiFlag = true;
-                //     startWIfiAP(true);
-                // }else if(val2!=1){
-                //     wifiFlag = false;
-                //     startWIfiAP(false);
-                // }
-                
-                if(llmType==1){
-                    getText("user", askquestion);
-                    Serial.print("text:");
-                    Serial.println(text);
-                    // 发送给大模型
-                    ConnServerAI();
-                }else if(llmType ==2){
-                    Answer = sendMsgToQwenAILLM(askquestion);
-                    Answer +="回答完毕。";
-                    segmentAnswer();
+                // 是否命中任务 0:未命中 1:命中
+                int commandFlag = dealCommand();
+                if(commandFlag == 0 ){
+                    if (llmType == 1){
+                        getText("user", askquestion);
+                        Serial.print("text:");
+                        Serial.println(text);
+                        // 发送给讯飞大模型
+                        ConnServerAI();
+                    }else if(llmType ==2){
+                        // 发送给 通义千问大模型
+                        Answer = sendMsgToQwenAILLM(askquestion);
+                        Answer +="回答完毕。";
+                        segmentAnswer();
+                    }
                 }
             }
         }
     }
+}
+
+int dealCommand(){
+    int flag = 1;//默认命中任务
+    if (askquestion.indexOf("开") > -1 && askquestion.indexOf("网络") > -1)
+    {
+        startWIfiAP(true);
+        askquestion = "已为你打开网络";
+        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        askquestion = "";
+        conflag = 1;
+    }
+    else if (askquestion.indexOf("关") > -1 && askquestion.indexOf("网络") > -1)
+    {
+        startWIfiAP(false);
+        askquestion = "已为你关闭网络。";
+        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        askquestion = "";
+        conflag = 1;
+    }
+    else if (askquestion.indexOf("开") > -1 && askquestion.indexOf("灯") > -1)
+    {
+        askquestion = "灯已打开";
+        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        // 打印内容
+        askquestion = "";
+        conflag = 1;
+    }
+    else if ((askquestion.indexOf("开") > -1 || (askquestion.indexOf("切") > -1 ))  && askquestion.indexOf("讯飞") > -1)
+    {
+        askquestion = "已切换为讯飞星火大模型";
+        llmType = 1;
+        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        // 打印内容
+        askquestion = "";
+        conflag = 1;
+    }
+    else if ((askquestion.indexOf("开") > -1 || (askquestion.indexOf("切") > -1 )) && askquestion.indexOf("千问") > -1)
+    {
+        askquestion = "已切换为通义千问大模型";
+        llmType = 2;
+        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        // 打印内容
+        askquestion = "";
+        conflag = 1;
+    }
+    else if (askquestion.indexOf("大") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
+    {
+        volume = volume + 10;
+        if(volume >= 100){
+            volume = 100;
+        }
+        audioTTS.setVolume(volume);
+        askquestion = "已为你增大音量";
+        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        // 打印内容
+        askquestion = "";
+        conflag = 1;
+    }
+    else if (askquestion.indexOf("小") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
+    {   
+        if(volume>=40){
+            volume = volume - 10;
+            askquestion = "已为你减小音量";
+            audioTTS.setVolume(volume);
+        }else{
+            askquestion = "音量减到最小了，再小就听不见啦。";    
+        }
+        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        // 打印内容
+        askquestion = "";
+        conflag = 1;
+    }
+    else if (askquestion.indexOf("关") > -1 && askquestion.indexOf("灯") > -1)
+    {
+        askquestion = "灯已关闭";
+        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        askquestion = "";
+        conflag = 1;
+    }
+    else if (askquestion.indexOf("退下") > -1 || askquestion.indexOf("再见") > -1 || askquestion.indexOf("拜拜") > -1)
+    {
+        askquestion = "好的，我先退下了，有事再找我。";
+        audioTTS.connecttospeech(askquestion.c_str(), "zh");
+        askquestion = "";
+        conflag = 0;
+    }else{
+        flag = 0;// 未命中任务
+    }
+    return flag;
 }
 
 // 录音
@@ -524,7 +609,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
 
             if(null_voice >= 60)
             {
-                audioTTS.connecttospeech("语音输入超时，本轮对话结束！请重新开启对话。","zh");
+                audioTTS.connecttospeech("未听到说话，本轮应答结束，请开启下一轮问答。","zh");
                 webSocketClientASR.close();
                 return;
             }
@@ -1015,7 +1100,7 @@ void setup()
 
     // 设置音频输出引脚和音量
     audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-    audioTTS.setVolume(50);
+    audioTTS.setVolume(volume);
 
     // 使用当前日期生成WebSocket连接的URL
     url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);

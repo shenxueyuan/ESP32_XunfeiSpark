@@ -6,5 +6,6 @@
         "streambuf": "cpp",
         "regex": "cpp"
     },
-    "idf.port": "/dev/tty.usbserial-141340"
+    "idf.port": "/dev/tty.wchusbserial141330",
+    "idf.flashType": "DFU"
 }
