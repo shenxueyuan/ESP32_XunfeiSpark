@@ -19,8 +19,7 @@ using namespace websockets;
 
 // 定义引脚和常量
 #define key_boot 0   // boot按键引脚
-#define key_speak 23 // 外置按键引脚
-#define led 2   //板载led引脚
+// #define led 2   //板载led引脚
 
 // AP 模式的SSID和密码
 const char *ap_ssid = "ESP32-Setup";
@@ -72,10 +71,10 @@ Audio2 audioTTS(false, 3, I2S_NUM_1); // 参数: 是否使用SD卡, 音量, I2S�
 // 指定启用的音频通道。可以设置为1（只启用左声道）或2（只启用右声道）或3（启用左右声道）
 // 指定使用哪个I2S端口。ESP32有两个I2S端口，I2S_NUM_0和I2S_NUM_1。可以根据需要选择不同的I2S端口。
 
-// 定义I2S引脚
-#define I2S_DOUT 27 // DIN引脚
-#define I2S_BCLK 26 // BCLK引脚
-#define I2S_LRC 25  // LRC引脚
+// 定义I2S音频放大器引脚
+#define I2S_DOUT 15 // DIN引脚
+#define I2S_BCLK 16 // BCLK引脚
+#define I2S_LRC 17  // LRC引脚
 
 // 函数声明
 void handleRoot(AsyncWebServerRequest *request);
@@ -585,7 +584,8 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
                 business["domain"] = "iat";
                 business["language"] = "zh_cn";
                 business["accent"] = "mandarin";
-                business["vinfo"] = 1;
+                // business["vinfo"] = 1;
+                business["dwa"] = "wpgs";// 开启动态修正
                 business["vad_eos"] = 1000;
 
                 String jsonString;
@@ -746,7 +746,7 @@ int wifiConnect()
             while (WiFi.status() != WL_CONNECTED)
             {
                 // 闪烁板载LED以指示连接状态
-                digitalWrite(led, ledstatus);
+                digitalWrite(LED_BUILTIN, ledstatus);
                 ledstatus = !ledstatus;
                 count++;
 
@@ -994,10 +994,8 @@ void setup()
     // 配置引脚模式
     // 配置按键引脚为上拉输入模式，用于boot按键检测
     pinMode(key_boot, INPUT_PULLUP);
-    // 外置按钮检测
-    pinMode(key_speak, INPUT_PULLUP);
     // 将GPIO2设置为输出模式
-    pinMode(led, OUTPUT);
+    pinMode(LED_BUILTIN, OUTPUT);
 
     // 初始化音频模块audioRecord
     audioRecord.init();
@@ -1063,12 +1061,12 @@ void loop()
     if (audioTTS.isplaying == 1)
     {
         // 点亮板载LED指示灯
-        digitalWrite(led, HIGH);
+        digitalWrite(LED_BUILTIN, HIGH);
     }
     else
     {
         // 熄灭板载LED指示灯
-        digitalWrite(led, LOW);
+        digitalWrite(LED_BUILTIN, LOW);
         // 如果距离上次时间同步超过4分钟且没有正在播放音频
         if ((urlTime + 240000 < millis()) && (audioTTS.isplaying == 0))
         {
@@ -1088,16 +1086,6 @@ void loop()
     {
         clickAndStart();
     }
-    // 外置检测按键是否按下
-    if (digitalRead(key_speak) == LOW)
-    {
-        delay(40);
-        // 避免抖动
-        if(digitalRead(key_speak) == LOW){
-            delay(200);
-            clickAndStart();
-        }
-    }
     // 添加连续对话功能
     if (audioTTS.isplaying == 0 && Answer == "" && subindex == subAnswers.size() && conflag == 1)
     {
@@ -1108,7 +1096,6 @@ void loop()
 
 void clickAndStart()
 {
-    // delay(200);
     conflag = 0;
     Serial.print("loopcount：");
     Serial.println(loopcount);

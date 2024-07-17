@@ -4,7 +4,8 @@
         "istream": "cpp",
         "ostream": "cpp",
         "streambuf": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "fstream": "cpp"
     },
-    "idf.port": "/dev/tty.usbserial-141340"
+    "idf.port": "/dev/tty.usbmodem1413301"
 }
