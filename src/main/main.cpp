@@ -15,7 +15,14 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
 using namespace websockets;
+
+// 定义NTP客户端
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
 // 定义引脚和常量
 #define key_boot 0   // boot按键引脚
@@ -38,8 +45,12 @@ String APISecret = "YzMyMDE2YWExMzkyOWU0YmQ4YjIzZmE1"; // API Secret
 String qwenApiKey = "sk-b60fe4859ae942beb0e5d0cd118b567e";
 String qwenApiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
 
+// 百度TTS获取token
+String baiduApiUrl = "https://aip.baidubce.com/oauth/2.0/token?client_id=YcYPjhxw0V7wzhcu07xnLbU5&client_secret=ANDLajJTKt4juGarl8cME1BS3aXmRMdV&grant_type=client_credentials";
+
 String answerHello = "嗯，收到。";
 String answerHello2 = "收到。";
+String accessToken = "24.e6e04657327b33f31c8927d754e54823.2592000.1723806315.282335 - 86622984";
 boolean wifiFlag = true;
 
 
@@ -88,6 +99,7 @@ void checkLen(JsonArray textArray);
 int getLength(JsonArray textArray);
 float calculateRMS(uint8_t *buffer, int bufferSize);
 String sendMsgToQwenAILLM(String queston);
+void getBaiduAccessToken();
 void segmentAnswer();
 int dealCommand();
 void ConnServerAI();
@@ -265,8 +277,9 @@ void onMessageCallbackAI(WebsocketsMessage message)
     }
 }
 
+// 统一调用百度TTS
 void connecttospeech(String content){
-    audioTTS.connecttospeech(content.c_str(), "zh",per.c_str());
+    audioTTS.connecttospeech(content.c_str(), "zh",per.c_str(),accessToken.c_str());
 }
 
 
@@ -343,6 +356,35 @@ String sendMsgToQwenAILLM(String inputText)
     http.end();
     Serial.printf("通义千问error %i \n", httpResponseCode);
     return "";
+  }
+}
+
+
+
+void getBaiduAccessToken() 
+{
+  HTTPClient http;
+  http.setTimeout(10000);
+  http.begin(baiduApiUrl);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Authorization", String(qwenApiKey));
+  String payload = "";
+  int httpResponseCode = http.POST(payload);
+  if (httpResponseCode == 200) {
+    String response = http.getString();
+    http.end();
+    Serial.print("baidu-token-response:");
+    Serial.println(response);
+
+    // Parse JSON response
+    DynamicJsonDocument jsonDoc(1024);
+    deserializeJson(jsonDoc, response);
+    String access_token =  jsonDoc["access_token"];
+    access_token.replace("-"," - ");
+    preferences.putString("accessToken",access_token);
+  } else {
+    http.end();
+    Serial.printf("百度token %i \n", httpResponseCode);
   }
 }
 
@@ -526,7 +568,7 @@ int dealCommand(){
         askquestion = "";
         conflag = 1;
     }
-    else if ((askquestion.indexOf("开") > -1 || (askquestion.indexOf("切") > -1 )) && askquestion.indexOf("千问") > -1)
+    else if ((askquestion.indexOf("开") > -1 || (askquestion.indexOf("切") > -1 )) && (askquestion.indexOf("千问") > -1 || askquestion.indexOf("阿里") > -1))
     {
         askquestion = "已切换为通义千问大模型";
         llmType = 2;
@@ -1142,6 +1184,7 @@ void setup()
 
     per = preferences.getString("per","5118");
     
+    accessToken = preferences.getString("accessToken");
 
     addWifi();
     int result = wifiConnect();
@@ -1160,6 +1203,13 @@ void setup()
 
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
+
+    unsigned long epochTime = timeClient.getEpochTime();
+    Serial.print("Epoch Time: ");
+    Serial.println(epochTime);
+
+    // getBaiduAccessToken();
+
 }
 
 void startWIfiAP(bool isOpen)

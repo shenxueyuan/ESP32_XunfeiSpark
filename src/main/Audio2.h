@@ -124,7 +124,7 @@ public:
     ~Audio2();
     void setBufsize(int rambuf_sz, int psrambuf_sz);
     bool connecttohost(const char *host, const char *user = "", const char *pwd = "");
-    bool connecttospeech(const char *speech, const char *lang, const char *per);
+    bool connecttospeech(const char *speech, const char *lang, const char *per, const char *tok);
     bool connecttoFS(fs::FS &fs, const char *path, int32_t resumeFilePos = -1);
     bool connecttoSD(const char *path, int32_t resumeFilePos = -1);
     bool setFileLoop(bool input); // TEST loop
