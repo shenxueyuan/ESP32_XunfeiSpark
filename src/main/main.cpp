@@ -546,7 +546,7 @@ int dealCommand(){
         askquestion = "";
         conflag = 1;
     }
-    else if ((askquestion.indexOf("切") > -1 || (askquestion.indexOf("换") > -1 )) && askquestion.indexOf("普通") > -1)
+    else if ((askquestion.indexOf("切") > -1 || (askquestion.indexOf("换") > -1 )) && (askquestion.indexOf("普通") > -1 || askquestion.indexOf("大象") > -1))
     {
         askquestion = welcome;
         roleContent = roleAoteMan;
@@ -559,12 +559,18 @@ int dealCommand(){
     }
     else if (askquestion.indexOf("大") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
     {
-        volume = volume + 10;
-        if(volume >= 100){
+        if(askquestion.indexOf("最大")>-1){
             volume = 100;
+            audioTTS.setVolume(volume);
+            askquestion = "音量已调到最大，注意保护耳朵哦";
+        }else if(volume < 100){
+            volume = volume + 10;
+            audioTTS.setVolume(volume);
+            askquestion = "已为你增大音量";
+        }else{
+            askquestion = "声音已经调到最大了，不能再大了。";
         }
-        audioTTS.setVolume(volume);
-        askquestion = "已为你增大音量";
+    
         connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
@@ -572,7 +578,11 @@ int dealCommand(){
     }
     else if (askquestion.indexOf("小") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
     {   
-        if(volume>=40){
+        if(askquestion.indexOf("最小") >-1){
+            volume = 30;
+            audioTTS.setVolume(volume);
+            askquestion = "音量减到最小了";   
+        }else if(volume>=40){
             volume = volume - 10;
             askquestion = "已为你减小音量";
             audioTTS.setVolume(volume);
@@ -890,6 +900,7 @@ int wifiConnect()
                 if(per.indexOf("5118") > -1){
                     connecttospeech(welcome.c_str());
                 }else if(per.indexOf("3") > -1){
+                    roleContent = roleAoteMan;
                     connecttospeech(welcomeATM.c_str());
                 }
                 // 输出当前空闲堆内存大小
