@@ -125,8 +125,9 @@ String askquestion = "";
 String welcome = "小朋友，我是大象，快来跟我聊天吧";
 String welcomeATM = "小朋友，我是赛文奥特曼，让我们一起来拯救地球吧！";
 String Answer = ""; // 用于语音合成，要分段
-String roleContent = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
+String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
 String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
+String roleContent = roleDaxiang;
 
 std::vector<String> subAnswers;
 int subindex = 0;
@@ -591,7 +592,7 @@ int dealCommand(){
     else if ((askquestion.indexOf("切") > -1 || (askquestion.indexOf("换") > -1 )) && (askquestion.indexOf("普通") > -1 || askquestion.indexOf("大象") > -1))
     {
         askquestion = welcome;
-        roleContent = roleAoteMan;
+        roleContent = roleDaxiang;
         per = "5118";
         preferences.putString("per", per);
         connecttospeech(askquestion.c_str());
@@ -604,12 +605,12 @@ int dealCommand(){
         if(askquestion.indexOf("最大")>-1){
             volume = 100;
             preferences.putInt("valume", volume);
-            audioTTS.setVolume(volume);
+            setVolume();
             askquestion = "音量已调到最大，注意保护耳朵哦";
         }else if(volume < 100){
             volume = volume + 10;
             preferences.putInt("valume", volume);
-            audioTTS.setVolume(volume);
+            setVolume();
             askquestion = "已为你增大音量";
         }else{
             askquestion = "声音已经调到最大了，不能再大了。";
@@ -625,13 +626,13 @@ int dealCommand(){
         if(askquestion.indexOf("最小") >-1){
             volume = 30;
             preferences.putInt("valume", volume);
-            audioTTS.setVolume(volume);
+            setVolume();
             askquestion = "音量减到最小了";   
         }else if(volume>=40){
             volume = volume - 10;
             preferences.putInt("valume", volume);
             askquestion = "已为你减小音量";
-            audioTTS.setVolume(volume);
+            setVolume();
         }else{
             askquestion = "音量减到最小了，再小就听不见啦。";    
         }
@@ -653,7 +654,21 @@ int dealCommand(){
         connecttospeech(askquestion.c_str());
         askquestion = "";
         conflag = 0;
-    }else{
+    }else if (askquestion.indexOf("恢复") > -1 || askquestion.indexOf("出厂设置") > -1)
+    {
+        askquestion = "好的，系统已恢复出厂设置。";
+        
+        roleContent = roleAoteMan;
+        per = "5118";
+        preferences.putString("per", per);
+        llmType = 2;
+        getBaiduAccessToken();
+        connecttospeech(askquestion.c_str());
+        askquestion = "";
+        conflag = 0;
+    }
+    
+    else{
         flag = 0;// 未命中任务
     }
     return flag;
@@ -942,16 +957,19 @@ int wifiConnect()
                 Serial.print("IP address: ");
                 Serial.println(WiFi.localIP());
                 
-                // 启动成功后欢迎语
+                // 网络连接成功，关闭AP网络
+                startWIfiAP(false);
+                // 启动成功后欢迎语，5118大象
                 if(per.indexOf("5118") > -1){
+                    roleContent = roleDaxiang;
                     connecttospeech(welcome.c_str());
-                }else if(per.indexOf("3") > -1){
+                }else if(per.indexOf("5003") > -1){
+                    // 5003 奥特曼
                     roleContent = roleAoteMan;
                     connecttospeech(welcomeATM.c_str());
                 }
                 // 输出当前空闲堆内存大小
                 Serial.println("Free Heap: " + String(ESP.getFreeHeap()));
-            
                 return 1;
             }
         }
@@ -1145,6 +1163,9 @@ void getTimeFromServer()
     // 输出获取到的Date字段到串口
     Serial.println(Date);
 
+    String subDate = Date.substring(Date.indexOf("202"),Date.lastIndexOf(" "));
+    Serial.println(subDate);
+
     // 结束HTTP连接
     http.end();
 
@@ -1192,10 +1213,8 @@ void setup()
     // 从服务器获取当前时间
     getTimeFromServer();
 
-    volume = preferences.getInt("volume",50);
-    // 设置音频输出引脚和音量
-    audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-    audioTTS.setVolume(volume);
+    volume = preferences.getInt("volume", 50);
+    setVolume();
 
     // 使用当前日期生成WebSocket连接的URL
     url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
@@ -1204,12 +1223,14 @@ void setup()
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
 
-    unsigned long epochTime = timeClient.getEpochTime();
-    Serial.print("Epoch Time: ");
-    Serial.println(epochTime);
-
     // getBaiduAccessToken();
+}
 
+void setVolume()
+{
+    // 设置音频输出引脚和音量
+    audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+    audioTTS.setVolume(volume);
 }
 
 void startWIfiAP(bool isOpen)
