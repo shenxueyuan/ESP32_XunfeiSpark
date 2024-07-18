@@ -122,8 +122,8 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain);
 void displayWrappedText(const string &text1, int x, int y, int maxWidth);
 
 String askquestion = "";
-String welcome = "小朋友，我是大象，快来跟我聊天吧";
-String welcomeATM = "小朋友，我是赛文奥特曼，让我们一起来拯救地球吧！";
+String welcome = "小朋友，你好啊，我是大象，快来跟我聊天吧";
+String welcomeATM = "小朋友，你好啊，我是赛文奥特曼，让我们一起来拯救地球吧！";
 String Answer = ""; // 用于语音合成，要分段
 String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
 String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
@@ -481,6 +481,10 @@ void onMessageCallbackASR(WebsocketsMessage message)
 
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
+        if (jsonDocument["data"]["status"] != 2)
+        {
+            askquestion = "";
+        }
 
         for (JsonVariant i : ws)
         {
@@ -773,7 +777,10 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
                 business["domain"] = "iat";
                 business["language"] = "zh_cn";
                 business["accent"] = "mandarin";
-                business["vinfo"] = 1;
+                // 不使用动态修正
+                // business["vinfo"] = 1;
+                // 使用动态修正
+                business["dwa"] = "wpgs";
                 business["vad_eos"] = 1000;
 
                 String jsonString;
