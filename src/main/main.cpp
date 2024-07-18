@@ -570,7 +570,7 @@ int dealCommand(){
     }
     else if ((askquestion.indexOf("开") > -1 || (askquestion.indexOf("切") > -1 )) && (askquestion.indexOf("千问") > -1 || askquestion.indexOf("阿里") > -1))
     {
-        askquestion = "已切换为通义千问大模型";
+        askquestion = "已切换为阿里通义千问大模型";
         llmType = 2;
         connecttospeech(askquestion.c_str());
         // 打印内容
