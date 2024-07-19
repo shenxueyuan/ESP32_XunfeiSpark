@@ -949,7 +949,7 @@ void voicePlay()
     {
         if (subindex < subAnswers.size())
         {
-            delay(150);
+            delay(200);
             connecttospeech(subAnswers[subindex].c_str());
             subindex++;
             conflag = 1;
