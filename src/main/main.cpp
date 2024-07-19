@@ -361,7 +361,8 @@ String sendMsgToQwenAILLM(String inputText)
     // Serial.println(response);
 
     // Parse JSON response
-    DynamicJsonDocument jsonDoc(1024);
+    // DynamicJsonDocument jsonDoc(1024);
+    StaticJsonDocument<1024> jsonDoc;
     deserializeJson(jsonDoc, response);
     String outputText = jsonDoc["output"]["text"];
     // return outputText;
@@ -685,62 +686,62 @@ int dealCommand(){
         conflag = 0;
     }
     else if (((askquestion.indexOf("听") > -1 || askquestion.indexOf("放") > -1) && (askquestion.indexOf("歌") > -1 || askquestion.indexOf("音乐") > -1)) || mainStatus == 1)
+        {
+            String musicName = "";
+            String musicID = "";
+
+            preferences.begin("music_store", true);
+
+            // 查找音乐名称对应的ID
+            int numMusic = preferences.getInt("numMusic", 0);
+            for (int i = 0; i < numMusic; ++i)
             {
-                String musicName = "";
-                String musicID = "";
-
-                preferences.begin("music_store", true);
-
-                // 查找音乐名称对应的ID
-                int numMusic = preferences.getInt("numMusic", 0);
-                for (int i = 0; i < numMusic; ++i)
+                musicName = preferences.getString(("musicName" + String(i)).c_str(), "");
+                musicID = preferences.getString(("musicId" + String(i)).c_str(), "");
+                Serial.println("音乐名称: " + musicName);
+                Serial.println("音乐ID: " + musicID);
+                if (askquestion.indexOf(musicName.c_str()) > -1)
                 {
-                    musicName = preferences.getString(("musicName" + String(i)).c_str(), "");
-                    musicID = preferences.getString(("musicId" + String(i)).c_str(), "");
-                    Serial.println("音乐名称: " + musicName);
-                    Serial.println("音乐ID: " + musicID);
-                    if (askquestion.indexOf(musicName.c_str()) > -1)
-                    {
-                        Serial.println("找到了！");
-                        break;
-                    }
-                    else
-                    {
-                        musicID = "";
-                    }
+                    Serial.println("找到了！");
+                    break;
                 }
-
-                // 输出结果
-                if (musicID == "") {
-                    mainStatus = 1;
-                    Serial.println("未找到对应的音乐");
-                    getText("user", askquestion);
-                    askquestion = "";
-                    lastsetence = false;
-                    isReady = true;
-                    // todo 提问 大模型
-                    ConnServerAI();
-                } else {
-                    // 自建音乐服务器，按照文件名查找对应歌曲
-                    mainStatus = 0;
-                    String audioStreamURL = "https://music.163.com/song/media/outer/url?id=" + musicID + ".mp3";
-                    Serial.println(audioStreamURL.c_str());
-                    audioTTS.connecttohost(audioStreamURL.c_str());
-                    delay(2000);
-
-                    askquestion = "正在播放音乐：" + musicName;
-                    Serial.println(askquestion);
-                    Serial.println("音乐名称: " + musicName);
-                    Serial.println("音乐ID: " + musicID);
-                    askquestion = "";
-                    // 设置播放开始标志
-                    startPlay = true;
-                    flag = 1;
-                    Answer = "音乐播放完了，主人还想听什么音乐吗？";
-                    conflag = 1;
+                else
+                {
+                    musicID = "";
                 }
-                preferences.end();
             }
+
+            // 输出结果
+            if (musicID == "") {
+                mainStatus = 1;
+                Serial.println("未找到对应的音乐");
+                getText("user", askquestion);
+                askquestion = "";
+                lastsetence = false;
+                isReady = true;
+                // todo 提问 大模型
+                ConnServerAI();
+            } else {
+                // 自建音乐服务器，按照文件名查找对应歌曲
+                mainStatus = 0;
+                String audioStreamURL = "https://music.163.com/song/media/outer/url?id=" + musicID + ".mp3";
+                Serial.println(audioStreamURL.c_str());
+                audioTTS.connecttohost(audioStreamURL.c_str());
+                delay(2000);
+
+                askquestion = "正在播放音乐：" + musicName;
+                Serial.println(askquestion);
+                Serial.println("音乐名称: " + musicName);
+                Serial.println("音乐ID: " + musicID);
+                askquestion = "";
+                // 设置播放开始标志
+                startPlay = true;
+                flag = 1;
+                Answer = "音乐播放完了，主人还想听什么音乐吗？";
+                conflag = 1;
+            }
+            preferences.end();
+        }
     
     else{
         flag = 0;// 未命中任务
@@ -848,9 +849,9 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
                 business["language"] = "zh_cn";
                 business["accent"] = "mandarin";
                 // 不使用动态修正
-                // business["vinfo"] = 1;
+                business["vinfo"] = 1;
                 // 使用动态修正
-                business["dwa"] = "wpgs";
+                // business["dwa"] = "wpgs";
                 business["vad_eos"] = 1000;
 
                 String jsonString;
@@ -948,7 +949,7 @@ void voicePlay()
     {
         if (subindex < subAnswers.size())
         {
-            //  delay(200);
+            delay(150);
             connecttospeech(subAnswers[subindex].c_str());
             subindex++;
             conflag = 1;
