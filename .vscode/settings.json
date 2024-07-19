@@ -53,5 +53,4 @@
         "typeinfo": "cpp"
     },
     "idf.port": "/dev/tty.wchusbserial141330",
-    "idf.flashType": "DFU"
 }

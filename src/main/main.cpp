@@ -20,10 +20,6 @@
 
 using namespace websockets;
 
-// 定义NTP客户端
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org");
-
 // 定义引脚和常量
 #define key_boot 0   // boot按键引脚
 #define key_speak 23 // 外置按键引脚
@@ -88,28 +84,36 @@ Audio2 audioTTS(false, 3, I2S_NUM_1); // 参数: 是否使用SD卡, 音量, I2S�
 #define I2S_LRC 25  // LRC引脚
 
 // 函数声明
+// WIFI 相关操作
 void handleRoot(AsyncWebServerRequest *request);
+void handleWifiManagement(AsyncWebServerRequest *request);
+void handleMusicManagement(AsyncWebServerRequest *request);
 void handleSave(AsyncWebServerRequest *request);
 void handleDelete(AsyncWebServerRequest *request);
 void handleList(AsyncWebServerRequest *request);
-void connecttospeech(String content);
-void gain_token(void);
+void handleSaveMusic(AsyncWebServerRequest *request);
+void handleDeleteMusic(AsyncWebServerRequest *request);
+void handleListMusic(AsyncWebServerRequest *request);
+
 void getText(String role, String content);
-void checkLen(JsonArray textArray);
-int getLength(JsonArray textArray);
+void checkLen();
 float calculateRMS(uint8_t *buffer, int bufferSize);
+void ConnServerAI();
+void ConnServerASR();
+
+
+void connecttospeech(String content);
 String sendMsgToQwenAILLM(String queston);
 void getBaiduAccessToken();
 void segmentAnswer();
 int dealCommand();
-void ConnServerAI();
 void sendMsgToXunfeiAILLM();
-void ConnServerASR();
 void startWIfiAP(bool isOpen);
 
 // 创建动态JSON文档对象和数组
-DynamicJsonDocument doc(4096);
-JsonArray text = doc.to<JsonArray>();
+// DynamicJsonDocument doc(4096);
+// JsonArray text = doc.to<JsonArray>();
+std::vector<String> text;
 
 // 定义字符串变量
 String url = "";
@@ -122,16 +126,16 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain);
 void displayWrappedText(const string &text1, int x, int y, int maxWidth);
 
 String askquestion = "";
-String welcome = "小朋友，你好啊，我是大象，快来跟我聊天吧";
-String welcomeATM = "小朋友，你好啊，我是赛文奥特曼，让我们一起来拯救地球吧！";
 String Answer = ""; // 用于语音合成，要分段
-String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
-String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
-String roleContent = roleDaxiang;
-
 std::vector<String> subAnswers;
 int subindex = 0;
 String text_temp = "";
+
+String welcome = "小朋友，你好啊，我是大象，快来跟我聊天吧";
+String welcomeATM = "小朋友，你好啊，我是赛文奥特曼，让我们一起来拯救地球吧！";
+String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
+String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
+String roleContent = roleDaxiang;
 
 // 星火大模型参数
 const char *appId1 = "e7df2284"; // 替换为自己的星火大模型参数
@@ -199,16 +203,27 @@ void onMessageCallbackAI(WebsocketsMessage message)
         }
         else
         {
+            // 增加接收到的帧数计数器
             receiveFrame++;
             Serial.print("receiveFrame:");
             Serial.println(receiveFrame);
+            // 获取JSON数据中的payload部分
             JsonObject choices = jsonDocument["payload"]["choices"];
-            int status = choices["status"];
-            const char *content = choices["text"][0]["content"];
-            Serial.println(content);
-            String answer = "";
 
-            Answer += content;
+            // 获取status状态
+            int status = choices["status"];
+
+            // 获取文本内容
+            const char *content = choices["text"][0]["content"];
+            const char *removeSet = "\n*$"; // 定义需要移除的符号集
+            // 计算新字符串的最大长度
+            int length = strlen(content) + 1;
+            char *cleanedContent = new char[length];
+            removeChars(content, cleanedContent, removeSet);
+            Serial.println(cleanedContent);
+            
+
+            Answer += cleanedContent;
 
             if (Answer.length() >= textLimit && (audioTTS.isplaying == 0))
             {
@@ -220,7 +235,7 @@ void onMessageCallbackAI(WebsocketsMessage message)
 
                 if (lastPeriodIndex != -1)
                 {
-                    answer = Answer.substring(0, lastPeriodIndex + 1);
+                    String answer = Answer.substring(0, lastPeriodIndex + 1);
                     Serial.print("answer-line197: ");
                     Serial.println(answer);
                     Answer = Answer.substring(lastPeriodIndex + 2);
@@ -246,14 +261,14 @@ void onMessageCallbackAI(WebsocketsMessage message)
                     }
                     if (lastChineseSentenceIndex != -1)
                     {
-                        answer = Answer.substring(0, lastChineseSentenceIndex + 1);
+                        String answer = Answer.substring(0, lastChineseSentenceIndex + 1);
                         connecttospeech(answer.c_str());
                         Serial.print("speech-line224");
                         Answer = Answer.substring(lastChineseSentenceIndex + 2);
                     }
                     else
                     {
-                        answer = Answer.substring(0, textLimit);
+                        String answer = Answer.substring(0, textLimit);
                         connecttospeech(answer.c_str());
                         Serial.print("speech-line230");
                         Answer = Answer.substring(textLimit + 1);
@@ -439,7 +454,7 @@ void segmentAnswer(){
 void onMessageCallbackASR(WebsocketsMessage message)
 {
     // 创建一个静态JSON文档对象，用于存储解析后的JSON数据，最大容量为4096字节
-    StaticJsonDocument<4096> jsonDocument;
+    StaticJsonDocument<2048> jsonDocument;
 
     // 解析收到的JSON数据
     DeserializationError error = deserializeJson(jsonDocument, message.data());
@@ -522,8 +537,6 @@ void onMessageCallbackASR(WebsocketsMessage message)
                 if(commandFlag == 0 ){
                     if (llmType == 1){
                         getText("user", askquestion);
-                        Serial.print("text:");
-                        Serial.println(text);
                         // 发送给讯飞大模型
                         ConnServerAI();
                     }else if(llmType ==2){
@@ -671,6 +684,63 @@ int dealCommand(){
         askquestion = "";
         conflag = 0;
     }
+    else if (((askquestion.indexOf("听") > -1 || askquestion.indexOf("放") > -1) && (askquestion.indexOf("歌") > -1 || askquestion.indexOf("音乐") > -1)) || mainStatus == 1)
+            {
+                String musicName = "";
+                String musicID = "";
+
+                preferences.begin("music_store", true);
+
+                // 查找音乐名称对应的ID
+                int numMusic = preferences.getInt("numMusic", 0);
+                for (int i = 0; i < numMusic; ++i)
+                {
+                    musicName = preferences.getString(("musicName" + String(i)).c_str(), "");
+                    musicID = preferences.getString(("musicId" + String(i)).c_str(), "");
+                    Serial.println("音乐名称: " + musicName);
+                    Serial.println("音乐ID: " + musicID);
+                    if (askquestion.indexOf(musicName.c_str()) > -1)
+                    {
+                        Serial.println("找到了！");
+                        break;
+                    }
+                    else
+                    {
+                        musicID = "";
+                    }
+                }
+
+                // 输出结果
+                if (musicID == "") {
+                    mainStatus = 1;
+                    Serial.println("未找到对应的音乐");
+                    getText("user", askquestion);
+                    askquestion = "";
+                    lastsetence = false;
+                    isReady = true;
+                    // todo 提问 大模型
+                    ConnServerAI();
+                } else {
+                    // 自建音乐服务器，按照文件名查找对应歌曲
+                    mainStatus = 0;
+                    String audioStreamURL = "https://music.163.com/song/media/outer/url?id=" + musicID + ".mp3";
+                    Serial.println(audioStreamURL.c_str());
+                    audioTTS.connecttohost(audioStreamURL.c_str());
+                    delay(2000);
+
+                    askquestion = "正在播放音乐：" + musicName;
+                    Serial.println(askquestion);
+                    Serial.println("音乐名称: " + musicName);
+                    Serial.println("音乐ID: " + musicID);
+                    askquestion = "";
+                    // 设置播放开始标志
+                    startPlay = true;
+                    flag = 1;
+                    Answer = "音乐播放完了，主人还想听什么音乐吗？";
+                    conflag = 1;
+                }
+                preferences.end();
+            }
     
     else{
         flag = 0;// 未命中任务
@@ -696,7 +766,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
         int null_voice = 0;
 
         // 创建一个JSON文档对象
-        DynamicJsonDocument doc(2500);
+        StaticJsonDocument<2000> doc;
 
         // 无限循环，用于录制和发送音频数据
         while (1)
@@ -714,7 +784,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             float rms = calculateRMS((uint8_t *)audioRecord.wavData[0], 1280);
             printf("%d %f\n", 0, rms);
 
-            if(null_voice >= 60)
+            if(null_voice >= 80)
             {
                 connecttospeech("未听到说话，本轮应答结束，请开启下一轮问答。");
                 webSocketClientASR.close();
@@ -878,24 +948,14 @@ void voicePlay()
     {
         if (subindex < subAnswers.size())
         {
-            delay(200);
+            //  delay(200);
             connecttospeech(subAnswers[subindex].c_str());
-            Serial.println("speech-line592："+subAnswers[subindex]);
-            Serial.print("subindex669:" );
-            Serial.println(subindex);
-            Serial.print("subAnswers.size():");
-            Serial.println(subAnswers.size());
             subindex++;
             conflag = 1;
         }
         else
         {
             connecttospeech(Answer.c_str());
-            Serial.println("speech-line674："+subAnswers[subindex]);
-            Serial.print("subindex679:" );
-            Serial.println(subindex);
-            Serial.print("subAnswers.size():");
-            Serial.println(subAnswers.size());
             Answer = "";
             startPlay = false;
             conflag = 1;
@@ -919,7 +979,13 @@ int wifiConnect()
     // 断开当前WiFi连接
     WiFi.disconnect(true);
 
+    preferences.begin("wifi_store");
+
     int numNetworks = preferences.getInt("numNetworks", 0);
+
+    if(numNetworks == 0){
+       preferences.end(); 
+    }
 
     // 获取存储的 WiFi 配置
     for (int i = 0; i < numNetworks; ++i)
@@ -966,6 +1032,7 @@ int wifiConnect()
                 
                 // 网络连接成功，关闭AP网络
                 startWIfiAP(false);
+
                 // 启动成功后欢迎语，5118大象
                 if(per.indexOf("5118") > -1){
                     roleContent = roleDaxiang;
@@ -975,8 +1042,11 @@ int wifiConnect()
                     roleContent = roleAoteMan;
                     connecttospeech(welcomeATM.c_str());
                 }
+
                 // 输出当前空闲堆内存大小
                 Serial.println("Free Heap: " + String(ESP.getFreeHeap()));
+                
+                preferences.end(); 
                 return 1;
             }
         }
@@ -984,112 +1054,7 @@ int wifiConnect()
     
     return 0;
 }
-
-//WIFI连接H5 处理根路径的请求
-void handleRoot(AsyncWebServerRequest *request)
-{
-    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } form { display: inline-block; margin-top: 20px; } input[type='text'], input[type='password'] { padding: 10px; margin: 10px 0; width: 200px; } input[type='submit'], input[type='button'] { padding: 10px 20px; margin: 10px 5px; border: none; background-color: #333; color: white; cursor: pointer; } input[type='submit']:hover, input[type='button']:hover { background-color: #555; }</style></head><body><h1>ESP32 Wi-Fi Configuration</h1><form action='/save' method='post'><label for='ssid'>Wi-Fi SSID:</label><br><input type='text' id='ssid' name='ssid'><br><label for='password'>Password:</label><br><input type='password' id='password' name='password'><br><input type='submit' value='Save'></form><form action='/delete' method='post'><label for='ssid'>Wi-Fi SSID to Delete:</label><br><input type='text' id='ssid' name='ssid'><br><input type='submit' value='Delete'></form><a href='/list'><input type='button' value='List Wi-Fi Networks'></a></body></html>";
-    request->send(200, "text/html", html);
-}
-
-// 处理保存 WiFi 配置的请求
-void handleSave(AsyncWebServerRequest *request)
-{
-    
-    Serial.println("Start Save!");
-    String ssid = request->arg("ssid");
-    String password = request->arg("password");
-
-    int numNetworks = preferences.getInt("numNetworks", 0);
-
-    // 检查是否已经存在相同的网络
-    for (int i = 0; i < numNetworks; ++i)
-    {
-        String storedSsid = preferences.getString(("ssid" + String(i)).c_str(), "");
-        if (storedSsid == ssid)
-        {
-            // 如果存在相同的网络，更新密码
-            preferences.putString(("password" + String(i)).c_str(), password);
-            Serial.println("Succeess Update!");
-            request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Configuration Updated!</h1><p>The device will restart and attempt to connect to the updated network.</p><p><a href='/'>Go Back</a></p></body></html>");
-
-            return;
-        }
-    }
-
-    // 如果不存在相同的网络，添加新的网络
-    preferences.putString(("ssid" + String(numNetworks)).c_str(), ssid);
-    preferences.putString(("password" + String(numNetworks)).c_str(), password);
-    preferences.putInt("numNetworks", numNetworks + 1);
-    
-    Serial.println("Succeess Save!");
-
-    request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Configuration Saved!</h1><p>The device will restart and attempt to connect to the new network.</p><p><a href='/'>Go Back</a></p></body></html>");
-}
-
-// 处理删除 WiFi 配置的请求
-void handleDelete(AsyncWebServerRequest *request)
-{
-
-    Serial.println("Start Delete!");
-    String ssidToDelete = request->arg("ssid");
-
-    int numNetworks = preferences.getInt("numNetworks", 0);
-
-    // 查找并删除指定的网络
-    for (int i = 0; i < numNetworks; ++i)
-    {
-        String storedSsid = preferences.getString(("ssid" + String(i)).c_str(), "");
-        if (storedSsid == ssidToDelete)
-        {
-            // 删除网络
-            preferences.remove(("ssid" + String(i)).c_str());
-            preferences.remove(("password" + String(i)).c_str());
-
-            // 将后面的网络信息往前移动
-            for (int j = i; j < numNetworks - 1; ++j)
-            {
-                String nextSsid = preferences.getString(("ssid" + String(j + 1)).c_str(), "");
-                String nextPassword = preferences.getString(("password" + String(j + 1)).c_str(), "");
-
-                preferences.putString(("ssid" + String(j)).c_str(), nextSsid);
-                preferences.putString(("password" + String(j)).c_str(), nextPassword);
-            }
-
-            preferences.remove(("ssid" + String(numNetworks - 1)).c_str());
-            preferences.remove(("password" + String(numNetworks - 1)).c_str());
-            preferences.putInt("numNetworks", numNetworks - 1);
-            
-            Serial.println("Succeess Delete!");
-
-            request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Network Deleted!</h1><p>The network has been deleted. The device will restart to apply changes.</p><p><a href='/'>Go Back</a></p></body></html>");
-
-            return;
-        }
-    }
-    Serial.println("Fail to Delete!");
-
-    request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Network Not Found!</h1><p>The specified network was not found.</p><p><a href='/'>Go Back</a></p></body></html>");
-}
-
-// 处理列出已保存的 WiFi 配置的请求
-void handleList(AsyncWebServerRequest *request)
-{
-    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Saved Wi-Fi Networks</h1><ul>";
-
-    int numNetworks = preferences.getInt("numNetworks", 0);
-
-    for (int i = 0; i < numNetworks; ++i)
-    {
-        String ssid = preferences.getString(("ssid" + String(i)).c_str(), "");
-        String password = preferences.getString(("password" + String(i)).c_str(), "");
-        html += "<li>ssid" + String(i) + ": " + ssid + " " + password + "</li>";
-    }
-
-    html += "</ul><p><a href='/'>Go Back</a></p></body></html>";
-
-    request->send(200, "text/html", html);
-}
+ 
 
 // https://www.xfyun.cn/doc/spark/general_url_authentication.html#_1-2-%E9%89%B4%E6%9D%83%E5%8F%82%E6%95%B0
 String getUrl(String Spark_url, String host, String path, String Date)
@@ -1170,8 +1135,8 @@ void getTimeFromServer()
     // 输出获取到的Date字段到串口
     Serial.println(Date);
 
-    String subDate = Date.substring(Date.indexOf("202"),Date.lastIndexOf(" "));
-    Serial.println(subDate);
+    // String subDate = Date.substring(Date.indexOf("202"),Date.lastIndexOf(" "));
+    // Serial.println(subDate);
 
     // 结束HTTP连接
     http.end();
@@ -1205,7 +1170,6 @@ void setup()
     // 初始化音频模块audioRecord
     audioRecord.init();
     
-    startWIfiAP(true);
 
     // 初始化 Preferences
     preferences.begin("wifi-config");
@@ -1214,8 +1178,12 @@ void setup()
     
     accessToken = preferences.getString("accessToken");
 
-    addWifi();
+    // addWifi();
     int result = wifiConnect();
+    // 如果网络未连接，打开AP网络
+    if(result !=1){
+        startWIfiAP(true);
+    }
 
     // 从服务器获取当前时间
     getTimeFromServer();
@@ -1230,6 +1198,7 @@ void setup()
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
 
+    delay(2000);
     // getBaiduAccessToken();
 }
 
@@ -1248,9 +1217,14 @@ void startWIfiAP(bool isOpen)
         Serial.println("Started Access Point");
         // 启动 Web 服务器
         server.on("/", HTTP_GET, handleRoot);
+        server.on("/wifi", HTTP_GET, handleWifiManagement);
+        server.on("/music", HTTP_GET, handleMusicManagement);
         server.on("/save", HTTP_POST, handleSave);
         server.on("/delete", HTTP_POST, handleDelete);
         server.on("/list", HTTP_GET, handleList);
+        server.on("/saveMusic", HTTP_POST, handleSaveMusic);
+        server.on("/deleteMusic", HTTP_POST, handleDeleteMusic);
+        server.on("/listMusic", HTTP_GET, handleListMusic);
         server.begin();
         Serial.println("WebServer started, waiting for configuration...");
     }else{
@@ -1284,17 +1258,6 @@ void loop()
     {
         // 熄灭板载LED指示灯
         digitalWrite(led, LOW);
-        // 如果距离上次时间同步超过4分钟且没有正在播放音频
-        if ((urlTime + 240000 < millis()) && (audioTTS.isplaying == 0))
-        {
-            // 更新时间戳
-            urlTime = millis();
-            // 从服务器获取当前时间
-            getTimeFromServer();
-            // 更新WebSocket连接的URL
-            url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-            urlASR = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
-        }
     }
 
 
@@ -1338,6 +1301,7 @@ void clickAndStart()
     subindex = 0;
     subAnswers.clear();
     Serial.printf("Start recognition\r\n\r\n");
+
     adc_start_flag = 1;
 
     // 如果距离上次时间同步超过4分钟
@@ -1355,76 +1319,78 @@ void clickAndStart()
 
     // 连接到WebSocket服务器-语音识别
     ConnServerASR();
-    // audioTTS.stopSong();
+    
     adc_complete_flag = 0;
 }
 
 // 显示文本
 void getText(String role, String content)
 {
-    // 检查并调整文本长度
-    checkLen(text);
+     // 检查并调整文本长度
+    checkLen();
 
-    // 创建一个动态JSON文档，容量为1024字节
-    DynamicJsonDocument jsoncon(1024);
+    // 创建一个静态JSON文档，容量为512字节
+    StaticJsonDocument<512> jsoncon;
 
     // 设置JSON文档中的角色和内容
     jsoncon["role"] = role;
     jsoncon["content"] = content;
-    Serial.print("jsoncon中的内容为：");
+    Serial.print("jsoncon：");
     Serial.println(jsoncon.as<String>());
 
-    // 将生成的JSON文档添加到全局变量text中
-    text.add(jsoncon);
+    // 将JSON文档序列化为字符串
+    String jsonString;
+    serializeJson(jsoncon, jsonString);
 
-    // 清空临时JSON文档
-    // jsoncon.clear();
+    // 将字符串存储到vector中
+    text.push_back(jsonString);
+
+    // 输出vector中的内容
+    for (const auto& jsonStr : text) {
+        Serial.println(jsonStr);
+    }
+    
+    /*/ 将生成的JSON文档添加到全局变量text中
+    text.add(jsoncon);
 
     // 序列化全局变量text中的内容为字符串
     String serialized;
     serializeJson(text, serialized);
 
+    // 输出序列化后的JSON字符串到串口
+    Serial.print("text: ");
+    Serial.println(serialized);*/
+
     // 清空临时JSON文档
     jsoncon.clear();
-
-    // 输出序列化后的JSON字符串到串口
-    Serial.print("text中的内容为: ");
-    Serial.println(serialized);
-
     // 也可以使用格式化的方式输出JSON，以下代码被注释掉了
     // serializeJsonPretty(text, Serial);
 }
 
-int getLength(JsonArray textArray)
-{
-    int length = 0; // 初始化长度变量
-
-    // 遍历JSON数组中的每个对象
-    for (JsonObject content : textArray)
-    {
-        // 获取对象中的"content"字段值
-        const char *temp = content["content"];
-
-        // 计算"content"字段字符串的长度
-        int leng = strlen(temp) + 60;
-
-        // 累加每个字符串的长度
-        length += leng;
-    }
-
-    // 返回累加后的总长度
-    return length;
-}
-
 // 实时清理较早的历史对话记录
-void checkLen(JsonArray textArray)
+void checkLen()
 {
-    // 当JSON数组中的字符串总长度超过2048字节时，进入循环
-    if (getLength(textArray) > 2048)
+    /*Serial.print("text size:");
+    Serial.println(text.memoryUsage());
+    // 计算jsonVector占用的字节数
+    // 当JSON数组中的字符串总长度超过1600字节时，进入循环
+    if (text.memoryUsage() > 1600)
     {
         // 移除数组中的第一对问答
-        textArray.remove(0);
-        textArray.remove(0);
+        text.remove(0);
+        text.remove(0);
+    }*/
+    size_t totalBytes = 0;
+
+    // 计算vector中每个字符串的长度
+    for (const auto& jsonStr : text) {
+        totalBytes += jsonStr.length();
+    }
+    Serial.print("text size:");
+    Serial.println(totalBytes);
+    if (totalBytes > 800)
+    {
+        text.erase(text.begin(), text.begin() + 2);
     }
     // 函数没有返回值，直接修改传入的JSON数组
     // return textArray; // 注释掉的代码，表明此函数不返回数组
@@ -1433,7 +1399,7 @@ void checkLen(JsonArray textArray)
 DynamicJsonDocument gen_params(const char *appid, const char *domain)
 {
     // 创建一个容量为2048字节的动态JSON文档
-    DynamicJsonDocument data(4096);
+    DynamicJsonDocument data(1800);
 
     // 创建一个名为header的嵌套JSON对象，并添加app_id和uid字段
     JsonObject header = data.createNestedObject("header");
@@ -1446,7 +1412,7 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain)
     // 在parameter对象中创建一个名为chat的嵌套对象，并添加domain, temperature和max_tokens字段
     JsonObject chat = parameter.createNestedObject("chat");
     chat["domain"] = domain;
-    chat["temperature"] = 0.5;
+    chat["temperature"] = 0.6;
     chat["max_tokens"] = 512;
 
     // 创建一个名为payload的嵌套JSON对象
@@ -1463,9 +1429,20 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain)
     systemMessage["content"] = roleContent;
 
     // 遍历全局变量text中的每个元素，并将其添加到text数组中
-    for (const auto &item : text)
+    /*for (const auto &item : text)
     {
         textArray.add(item);
+    }*/
+    // 将jsonVector中的内容添加到JsonArray中
+    for (const auto& jsonStr : text) {
+        DynamicJsonDocument tempDoc(512);
+        DeserializationError error = deserializeJson(tempDoc, jsonStr);
+        if (!error) {
+            textArray.add(tempDoc.as<JsonVariant>());
+        } else {
+            Serial.print("反序列化失败: ");
+            Serial.println(error.c_str());
+        }
     }
 
     // 返回构建好的JSON文档
@@ -1492,4 +1469,239 @@ float calculateRMS(uint8_t *buffer, int bufferSize)
 
     // 返回总和的平方根，即RMS值
     return sqrt(sum);
+}
+
+// 处理根路径的请求
+void handleRoot(AsyncWebServerRequest *request)
+{
+    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Configuration</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } a { display: inline-block; padding: 10px 20px; margin: 10px; border: none; background-color: #333; color: white; text-decoration: none; cursor: pointer; } a:hover { background-color: #555; }</style></head><body><h1>ESP32 Configuration</h1><a href='/wifi'>Wi-Fi Management</a><a href='/music'>Music Management</a></body></html>";
+    request->send(200, "text/html", html);
+}
+
+void handleWifiManagement(AsyncWebServerRequest *request)
+{
+    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Wi-Fi Management</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } form { display: inline-block; margin-top: 20px; } input[type='text'], input[type='password'] { padding: 10px; margin: 10px 0; width: 200px; } input[type='submit'], input[type='button'] { padding: 10px 20px; margin: 10px 5px; border: none; background-color: #333; color: white; cursor: pointer; } input[type='submit']:hover, input[type='button']:hover { background-color: #555; }</style></head><body><h1>Wi-Fi Management</h1><form action='/save' method='post'><label for='ssid'>Wi-Fi SSID:</label><br><input type='text' id='ssid' name='ssid'><br><label for='password'>Password:</label><br><input type='password' id='password' name='password'><br><input type='submit' value='Save'></form><form action='/delete' method='post'><label for='ssid'>Wi-Fi SSID to Delete:</label><br><input type='text' id='ssid' name='ssid'><br><input type='submit' value='Delete'></form><a href='/list'><input type='button' value='List Wi-Fi Networks'></a><p><a href='/'>Go Back</a></p></body></html>";
+    request->send(200, "text/html", html);
+}
+
+void handleMusicManagement(AsyncWebServerRequest *request)
+{
+    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Music Management</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } form { display: inline-block; margin-top: 20px; } input[type='text'], input[type='password'] { padding: 10px; margin: 10px 0; width: 200px; } input[type='submit'], input[type='button'] { padding: 10px 20px; margin: 10px 5px; border: none; background-color: #333; color: white; cursor: pointer; } input[type='submit']:hover, input[type='button']:hover { background-color: #555; }</style></head><body><h1>Music Management</h1><form action='/saveMusic' method='post'><label for='musicName'>Music Name:</label><br><input type='text' id='musicName' name='musicName'><br><label for='musicId'>Music ID:</label><br><input type='text' id='musicId' name='musicId'><br><input type='submit' value='Save Music'></form><form action='/deleteMusic' method='post'><label for='musicName'>Music Name to Delete:</label><br><input type='text' id='musicName' name='musicName'><br><input type='submit' value='Delete Music'></form><a href='/listMusic'><input type='button' value='List Saved Music'></a><p><a href='/'>Go Back</a></p></body></html>";
+    request->send(200, "text/html", html);
+}
+
+void handleSave(AsyncWebServerRequest *request)
+{
+    // tft.fillScreen(ST77XX_WHITE);
+    // u8g2.setCursor(0, 11);
+    // u8g2.print("进入网络配置！");
+
+    Serial.println("Start Save!");
+    String ssid = request->arg("ssid");
+    String password = request->arg("password");
+
+    preferences.begin("wifi_store", false);
+    int numNetworks = preferences.getInt("numNetworks", 0);
+
+    for (int i = 0; i < numNetworks; ++i)
+    {
+        String storedSsid = preferences.getString(("ssid" + String(i)).c_str(), "");
+        if (storedSsid == ssid)
+        {
+            preferences.putString(("password" + String(i)).c_str(), password);
+            // u8g2.setCursor(0, 11 + 12);
+            // u8g2.print("wifi密码更新成功！");
+            Serial.println("Succeess Update!");
+            request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Configuration Updated!</h1><p>Network password updated successfully.</p><p><a href='/'>Go Back</a></p></body></html>");
+            preferences.end();
+            return;
+        }
+    }
+
+    preferences.putString(("ssid" + String(numNetworks)).c_str(), ssid);
+    preferences.putString(("password" + String(numNetworks)).c_str(), password);
+    preferences.putInt("numNetworks", numNetworks + 1);
+    // u8g2.setCursor(0, 11 + 12);
+    // u8g2.print("新wifi添加成功！");
+    Serial.println("Succeess Save!");
+
+    request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Configuration Saved!</h1><p>Network information added successfully.</p><p><a href='/'>Go Back</a></p></body></html>");
+    preferences.end();
+}
+
+void handleDelete(AsyncWebServerRequest *request)
+{
+    // tft.fillScreen(ST77XX_WHITE);
+    // u8g2.setCursor(0, 11);
+    // u8g2.print("进入网络配置！");
+
+    Serial.println("Start Delete!");
+    String ssidToDelete = request->arg("ssid");
+
+    preferences.begin("wifi_store", false);
+    int numNetworks = preferences.getInt("numNetworks", 0);
+
+    for (int i = 0; i < numNetworks; ++i)
+    {
+        String storedSsid = preferences.getString(("ssid" + String(i)).c_str(), "");
+        if (storedSsid == ssidToDelete)
+        {
+            preferences.remove(("ssid" + String(i)).c_str());
+            preferences.remove(("password" + String(i)).c_str());
+
+            for (int j = i; j < numNetworks - 1; ++j)
+            {
+                String nextSsid = preferences.getString(("ssid" + String(j + 1)).c_str(), "");
+                String nextPassword = preferences.getString(("password" + String(j + 1)).c_str(), "");
+
+                preferences.putString(("ssid" + String(j)).c_str(), nextSsid);
+                preferences.putString(("password" + String(j)).c_str(), nextPassword);
+            }
+
+            preferences.remove(("ssid" + String(numNetworks - 1)).c_str());
+            preferences.remove(("password" + String(numNetworks - 1)).c_str());
+            preferences.putInt("numNetworks", numNetworks - 1);
+            // u8g2.setCursor(0, 11 + 12);
+            // u8g2.print("wifi删除成功！");
+            Serial.println("Succeess Delete!");
+
+            request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Network Deleted!</h1><p>The network has been deleted.</p><p><a href='/'>Go Back</a></p></body></html>");
+            preferences.end();
+            return;
+        }
+    }
+    // u8g2.setCursor(0, 11 + 12);
+    // u8g2.print("该wifi不存在！");
+    Serial.println("Fail to Delete!");
+
+    request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Network Not Found!</h1><p>The specified network was not found.</p><p><a href='/'>Go Back</a></p></body></html>");
+    preferences.end();
+}
+
+void handleList(AsyncWebServerRequest *request)
+{
+    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Saved Wi-Fi Networks</h1><ul>";
+
+    preferences.begin("wifi_store", true);
+    int numNetworks = preferences.getInt("numNetworks", 0);
+
+    for (int i = 0; i < numNetworks; ++i)
+    {
+        String ssid = preferences.getString(("ssid" + String(i)).c_str(), "");
+        String password = preferences.getString(("password" + String(i)).c_str(), "");
+        html += "<li>ssid" + String(i) + ": " + ssid + " " + password + "</li>";
+    }
+
+    html += "</ul><p><a href='/'>Go Back</a></p></body></html>";
+
+    request->send(200, "text/html", html);
+    preferences.end();
+}
+
+void handleSaveMusic(AsyncWebServerRequest *request)
+{
+    // tft.fillScreen(ST77XX_WHITE);
+    // u8g2.setCursor(0, 11);
+    // u8g2.print("进入音乐配置！");
+
+    Serial.println("Start Save Music!");
+    String musicName = request->arg("musicName");
+    String musicId = request->arg("musicId");
+
+    preferences.begin("music_store", false);
+    int numMusic = preferences.getInt("numMusic", 0);
+
+    for (int i = 0; i < numMusic; ++i)
+    {
+        String storedMusicName = preferences.getString(("musicName" + String(i)).c_str(), "");
+        if (storedMusicName == musicName)
+        {
+            preferences.putString(("musicId" + String(i)).c_str(), musicId);
+            // u8g2.setCursor(0, 11 + 12);
+            // u8g2.print("音乐ID更新成功！");
+            Serial.println("Success Update Music!");
+            request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Music Configuration</title></head><body><h1>Music ID Updated!</h1><p>Music ID updated successfully.</p><p><a href='/'>Go Back</a></p></body></html>");
+            preferences.end();
+            return;
+        }
+    }
+
+    preferences.putString(("musicName" + String(numMusic)).c_str(), musicName);
+    preferences.putString(("musicId" + String(numMusic)).c_str(), musicId);
+    preferences.putInt("numMusic", numMusic + 1);
+    // u8g2.setCursor(0, 11 + 12);
+    // u8g2.print("新音乐添加成功！");
+    Serial.println("Success Save Music!");
+
+    request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Music Configuration</title></head><body><h1>Music Saved!</h1><p>Music information added successfully.</p><p><a href='/'>Go Back</a></p></body></html>");
+    preferences.end();
+}
+
+void handleDeleteMusic(AsyncWebServerRequest *request)
+{
+    // tft.fillScreen(ST77XX_WHITE);
+    // u8g2.setCursor(0, 11);
+    // u8g2.print("进入音乐配置！");
+
+    Serial.println("Start Delete Music!");
+    String musicNameToDelete = request->arg("musicName");
+
+    preferences.begin("music_store", false);
+    int numMusic = preferences.getInt("numMusic", 0);
+
+    for (int i = 0; i < numMusic; ++i)
+    {
+        String storedMusicName = preferences.getString(("musicName" + String(i)).c_str(), "");
+        if (storedMusicName == musicNameToDelete)
+        {
+            preferences.remove(("musicName" + String(i)).c_str());
+            preferences.remove(("musicId" + String(i)).c_str());
+
+            for (int j = i; j < numMusic - 1; ++j)
+            {
+                String nextMusicName = preferences.getString(("musicName" + String(j + 1)).c_str(), "");
+                String nextMusicId = preferences.getString(("musicId" + String(j + 1)).c_str(), "");
+
+                preferences.putString(("musicName" + String(j)).c_str(), nextMusicName);
+                preferences.putString(("musicId" + String(j)).c_str(), nextMusicId);
+            }
+
+            preferences.remove(("musicName" + String(numMusic - 1)).c_str());
+            preferences.remove(("musicId" + String(numMusic - 1)).c_str());
+            preferences.putInt("numMusic", numMusic - 1);
+            // u8g2.setCursor(0, 11 + 12);
+            // u8g2.print("音乐删除成功！");
+            Serial.println("Success Delete Music!");
+
+            request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Music Configuration</title></head><body><h1>Music Deleted!</h1><p>The music has been deleted.</p><p><a href='/'>Go Back</a></p></body></html>");
+            preferences.end();
+            return;
+        }
+    }
+    // u8g2.setCursor(0, 11 + 12);
+    // u8g2.print("该音乐不存在！");
+    Serial.println("Fail to Delete Music!");
+
+    request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Music Configuration</title></head><body><h1>Music Not Found!</h1><p>The specified music was not found.</p><p><a href='/'>Go Back</a></p></body></html>");
+    preferences.end();
+}
+
+void handleListMusic(AsyncWebServerRequest *request)
+{
+    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Music Configuration</title></head><body><h1>Saved Music</h1><ul>";
+
+    preferences.begin("music_store", true);
+    int numMusic = preferences.getInt("numMusic", 0);
+
+    for (int i = 0; i < numMusic; ++i)
+    {
+        String musicName = preferences.getString(("musicName" + String(i)).c_str(), "");
+        String musicId = preferences.getString(("musicId" + String(i)).c_str(), "");
+        html += "<li>musicName" + String(i) + ": " + musicName + " " + musicId + "</li>";
+    }
+
+    html += "</ul><p><a href='/'>Go Back</a></p></body></html>";
+
+    request->send(200, "text/html", html);
+    preferences.end();
 }
