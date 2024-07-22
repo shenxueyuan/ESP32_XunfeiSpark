@@ -44,6 +44,9 @@ String qwenApiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-ge
 // 百度TTS获取token
 String baiduApiUrl = "https://aip.baidubce.com/oauth/2.0/token?client_id=YcYPjhxw0V7wzhcu07xnLbU5&client_secret=ANDLajJTKt4juGarl8cME1BS3aXmRMdV&grant_type=client_credentials";
 
+// 阿里 websocket
+String aliAsrURL = "wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1?token=";
+
 String answerHello = "嗯，收到。";
 String answerHello2 = "收到。";
 String accessToken = "24.e6e04657327b33f31c8927d754e54823.2592000.1723806315.282335 - 86622984";
@@ -108,7 +111,6 @@ String sendMsgToQwenAILLM(String queston);
 void getBaiduAccessToken();
 void segmentAnswer();
 int dealCommand();
-void setPerConfig();
 void sendMsgToXunfeiAILLM();
 void startWIfiAP(bool isOpen);
 
@@ -603,7 +605,7 @@ int dealCommand(){
         askquestion = welcomeATM;
         roleContent = roleAoteMan;
         per = "5003";
-        setPerConfig();
+        preferences.putString("per", per);
         connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
@@ -614,7 +616,7 @@ int dealCommand(){
         askquestion = welcome;
         roleContent = roleDaxiang;
         per = "5118";
-        setPerConfig();
+        preferences.putString("per", per);
         connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
@@ -645,13 +647,13 @@ int dealCommand(){
     else if (askquestion.indexOf("小") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
     {   
         if(askquestion.indexOf("最小") >-1){
-            volume = 10;
+            volume = 5;
             setVolume();
             askquestion = "音量减到最小，注意仔细听哦";   
         }else if(volume > 10){
             volume = volume - 30;
             if(volume < 10){
-                volume =10;
+                volume = 10;
             }
             askquestion = "已为你减小音量";
             setVolume();
@@ -682,7 +684,7 @@ int dealCommand(){
         
         roleContent = roleAoteMan;
         per = "5118";
-        setPerConfig();
+        preferences.putString("per", per);
         llmType = 2;
         getBaiduAccessToken();
         connecttospeech(askquestion.c_str());
@@ -751,13 +753,6 @@ int dealCommand(){
         flag = 0;// 未命中任务
     }
     return flag;
-}
-
-void setPerConfig()
-{
-    preferences.begin("esp_config");
-    preferences.putString("per", per);
-    preferences.end();
 }
 
 // 录音
@@ -1188,17 +1183,13 @@ void setup()
     // 初始化音频模块audioRecord
     audioRecord.init();
     
+
     // 初始化 Preferences
-    preferences.begin("esp_config");
+    preferences.begin("wifi-config");
 
     per = preferences.getString("per","5118");
+    
     accessToken = preferences.getString("accessToken");
-
-    volume = preferences.getInt("volume", 50);
-    audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-    audioTTS.setVolume(volume);
-
-    preferences.end();
 
     // addWifi();
     int result = wifiConnect();
@@ -1209,6 +1200,13 @@ void setup()
 
     // 从服务器获取当前时间
     getTimeFromServer();
+
+    preferences.begin("volume_config");
+    volume = preferences.getInt("volume", 50);
+    audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+    audioTTS.setVolume(volume);
+    Serial.print("初始化-当前音量：");
+    Serial.println(volume);
 
     // 使用当前日期生成WebSocket连接的URL
     url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
@@ -1223,12 +1221,13 @@ void setup()
 
 void setVolume()
 {
-    preferences.begin("esp_config");
+    preferences.begin("volume-config");
     // 设置音频输出引脚和音量
     audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
     audioTTS.setVolume(volume);
-
-    preferences.putInt("valume", volume);
+    preferences.putInt("volume", volume);
+    Serial.print("保存音量-当前音量：");
+    Serial.println(volume);
     preferences.end();
 }
 
