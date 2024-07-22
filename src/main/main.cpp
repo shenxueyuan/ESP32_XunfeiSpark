@@ -45,7 +45,7 @@ String qwenApiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-ge
 String baiduApiUrl = "https://aip.baidubce.com/oauth/2.0/token?client_id=YcYPjhxw0V7wzhcu07xnLbU5&client_secret=ANDLajJTKt4juGarl8cME1BS3aXmRMdV&grant_type=client_credentials";
 
 // 阿里 websocket
-String aliAsrURL = "wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1?token=";
+String aliAsrURL = "wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1?token=56819863854c40bd8e82e560ceefd8fb";
 
 String answerHello = "嗯，收到。";
 String answerHello2 = "收到。";
@@ -104,6 +104,7 @@ void checkLen();
 float calculateRMS(uint8_t *buffer, int bufferSize);
 void ConnServerAI();
 void ConnServerASR();
+void ConnServerAliASR();
 
 
 void connecttospeech(String content);
@@ -151,6 +152,8 @@ using namespace websockets; // 使用WebSocket命名空间
 // 创建WebSocket客户端对象
 WebsocketsClient webSocketClientAI;
 WebsocketsClient webSocketClientASR;
+
+WebsocketsClient webSocketClientAliASR;
 
 int loopcount = 0; // 循环计数器
 int flag = 0;       // 用来确保subAnswer1一定是大模型回答最开始的内容
@@ -456,6 +459,42 @@ void segmentAnswer(){
 }
 
 // 将接收到的语音转成文本
+void onMessageCallbackAliASR(WebsocketsMessage message)
+{
+    // 创建一个静态JSON文档对象，用于存储解析后的JSON数据，最大容量为4096字节
+    StaticJsonDocument<2048> jsonDocument;
+    // 解析收到的JSON数据
+    DeserializationError error = deserializeJson(jsonDocument, message.data());
+
+    if (error)
+    {
+        // 如果解析出错，输出错误信息和收到的消息数据
+        Serial.println("error:");
+        Serial.println(error.c_str());
+        Serial.println(message.data());
+        return;
+    }
+    // 如果解析没有错误
+
+    // 从JSON数据中获取返回码
+    int code = jsonDocument["code"];
+    // 如果返回码不为0，表示出错
+    if (code != 0)
+    {
+        // 输出错误码和完整的JSON数据
+        Serial.println(code);
+        Serial.println(message.data());
+
+        // 关闭WebSocket客户端
+        webSocketClientASR.close();
+    }
+    else
+    {
+        
+    }
+}
+
+// 将接收到的语音转成文本
 void onMessageCallbackASR(WebsocketsMessage message)
 {
     // 创建一个静态JSON文档对象，用于存储解析后的JSON数据，最大容量为4096字节
@@ -582,7 +621,10 @@ int dealCommand(){
         askquestion = "";
         conflag = 1;
     }
-    else if ((askquestion.indexOf("开") > -1 || (askquestion.indexOf("切") > -1 ))  && askquestion.indexOf("讯飞") > -1)
+    else if ((askquestion.indexOf("开") > -1 
+                || (askquestion.indexOf("切") > -1 ) || (askquestion.indexOf("换") > -1 )
+            ) 
+            && (askquestion.indexOf("讯飞") > -1))
     {
         askquestion = "已切换为讯飞星火大模型";
         llmType = 1;
@@ -591,7 +633,10 @@ int dealCommand(){
         askquestion = "";
         conflag = 1;
     }
-    else if ((askquestion.indexOf("开") > -1 || (askquestion.indexOf("切") > -1 )) && (askquestion.indexOf("千问") > -1 || askquestion.indexOf("阿里") > -1))
+    else if ((askquestion.indexOf("开") > -1 
+                || (askquestion.indexOf("切") > -1 ) || (askquestion.indexOf("换") > -1 )
+            ) 
+            && (askquestion.indexOf("千问") > -1 || askquestion.indexOf("阿里") > -1))
     {
         askquestion = "已切换为阿里通义千问大模型";
         llmType = 2;
@@ -753,6 +798,153 @@ int dealCommand(){
         flag = 0;// 未命中任务
     }
     return flag;
+}
+// 录音
+void onEventsCallbackAliASR(WebsocketsEvent event, String data)
+{
+    // 当WebSocket连接打开时触发
+    if (event == WebsocketsEvent::ConnectionOpened)
+    {
+        // 向串口输出提示信息
+        Serial.println("Send message to ali");
+        uint32_t current_time = esp_timer_get_time();
+        printf("Time since STT ali - connection: %"PRId32" ms\r\n", (current_time - stt_connect_time) / 1000);
+
+        // 初始化变量
+        int silence = 0;
+        int firstframe = 1;
+        int j = 0;
+        int voicebegin = 0;
+        int voice = 0;
+        int null_voice = 0;
+
+        // 创建一个JSON文档对象
+        StaticJsonDocument<2000> doc;
+
+        // 无限循环，用于录制和发送音频数据
+        while (1)
+        {
+            // 清空JSON文档
+            doc.clear();
+
+            // 创建data对象
+            JsonObject data = doc.createNestedObject("data");
+
+            // 录制音频数据
+            audioRecord.Record();
+
+            // 计算音频数据的RMS值
+            float rms = calculateRMS((uint8_t *)audioRecord.wavData[0], 1280);
+            printf("%d %f\n", 0, rms);
+
+            if(null_voice >= 80)
+            {
+                connecttospeech("未听到说话，本轮应答结束，请开启下一轮问答。");
+                webSocketClientAliASR.close();
+                return;
+            }
+
+            // 判断是否为噪音
+            if (rms < noise)
+            {
+                null_voice ++;
+                if (voicebegin == 1)
+                {
+                    silence++;
+                }
+            }
+            else
+            {
+                voice++;
+                if (voice >= 5)
+                {
+                    voicebegin = 1;
+                }
+                else
+                {
+                    voicebegin = 0;
+                }
+                silence = 0;
+            }
+
+            // 如果静音达到8个周期，发送结束标志的音频数据
+            if (silence == 8)
+            {
+                data["status"] = 2;
+                data["format"] = "audio/L16;rate=8000";
+                data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
+                data["encoding"] = "raw";
+                j++;
+
+                String jsonString;
+                serializeJson(doc, jsonString);
+
+                webSocketClientAliASR.send(jsonString);
+                delay(40);
+                break;
+            }
+
+            // 处理第一帧音频数据
+            if (firstframe == 1)
+            {
+                data["status"] = 0;
+                data["format"] = "audio/L16;rate=8000";
+                data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
+                data["encoding"] = "raw";
+                j++;
+
+                JsonObject common = doc.createNestedObject("common");
+                common["app_id"] = appId1;
+
+                JsonObject business = doc.createNestedObject("business");
+                business["domain"] = "iat";
+                business["language"] = "zh_cn";
+                business["accent"] = "mandarin";
+                // 不使用动态修正
+                business["vinfo"] = 1;
+                business["vad_eos"] = 1000;
+
+                String jsonString;
+                serializeJson(doc, jsonString);
+
+                webSocketClientAliASR.send(jsonString);
+                firstframe = 0;
+                delay(40);
+            }
+            else
+            {
+                // 处理后续帧音频数据
+                data["status"] = 1;
+                data["format"] = "audio/L16;rate=8000";
+                data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
+                data["encoding"] = "raw";
+
+                String jsonString;
+                serializeJson(doc, jsonString);
+
+                webSocketClientAliASR.send(jsonString);
+                delay(40);
+            }
+        }
+    }
+    // 当WebSocket连接关闭时触发
+    else if (event == WebsocketsEvent::ConnectionClosed)
+    {
+        // 向串口输出提示信息
+        Serial.println("Connnection-ASR Closed");
+    }
+    // 当收到Ping消息时触发
+    else if (event == WebsocketsEvent::GotPing)
+    {
+        // 向串口输出提示信息
+        Serial.println("Got a Ping!");
+    }
+    // 当收到Pong消息时触发
+    else if (event == WebsocketsEvent::GotPong)
+    {
+        // 向串口输出提示信息
+        Serial.println("Got a Pong!");
+    }
 }
 
 // 录音
@@ -933,12 +1125,28 @@ void ConnServerAI()
     
 }
 
+void connServerAliASR(){
+    webSocketClientAliASR.onMessage(onMessageCallbackAliASR);
+    webSocketClientAliASR.onEvent(onEventsCallbackAliASR);
+    
+    // Connect to WebSocket
+    Serial.println("Begin connect to server-ali-asr......");
+    if (webSocketClientAliASR.connect(aliAsrURL.c_str()))
+    {
+        Serial.println("Connected to server-ali-asr!");
+    }
+    else
+    {
+        Serial.println("Failed to connect to server-ali-asr!");
+    }
+
+}
 
 void ConnServerASR()
 {
     stt_connect_time = esp_timer_get_time();
     
-    printf("Time since STT connection-start: %"PRId32" ms\r\n", (stt_connect_time));
+    printf("Time since STT ali - connection-start: %"PRId32" ms\r\n", (stt_connect_time));
     // Serial.println("urlASR:" + urlASR);
     webSocketClientASR.onMessage(onMessageCallbackASR);
     webSocketClientASR.onEvent(onEventsCallbackASR);
@@ -1416,6 +1624,29 @@ void checkLen()
     }
     // 函数没有返回值，直接修改传入的JSON数组
     // return textArray; // 注释掉的代码，表明此函数不返回数组
+}
+
+// https://help.aliyun.com/zh/isi/developer-reference/websocket
+DynamicJsonDocument gen_ali_asr_params(const char *appid, const char *transcription)
+{
+    // 创建一个容量为2048字节的动态JSON文档
+    DynamicJsonDocument data(1800);
+
+    // 创建一个名为header的嵌套JSON对象，并添加app_id和uid字段
+    JsonObject header = data.createNestedObject("header");
+    header["appkey"] = appid;
+    header["message_id"] = "1234";
+    header["namespace"] = "SpeechTranscriber";
+    header["name"] = transcription;// StartTranscription 指令 和 StopTranscription指令。 
+ 
+    // 创建一个名为payload的嵌套JSON对象
+    JsonObject payload = data.createNestedObject("payload");
+
+    // payload["format"] = "system";
+    // payload["sample_rate"] = roleContent;
+    
+    // 返回构建好的JSON文档
+    return data;
 }
 
 DynamicJsonDocument gen_params(const char *appid, const char *domain)
