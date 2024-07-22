@@ -69,6 +69,7 @@ hw_timer_t *timer = NULL; // 定义硬件定时器对象
 
 uint8_t adc_start_flag = 0;
 uint8_t adc_complete_flag = 0;
+uint32_t stt_connect_time = 0;
 
 
 // 创建音频对象
@@ -622,12 +623,13 @@ int dealCommand(){
     {
         if(askquestion.indexOf("最大")>-1){
             volume = 100;
-            preferences.putInt("valume", volume);
             setVolume();
-            askquestion = "音量已调到最大，注意保护耳朵哦";
-        }else if(volume <= 80){
-            volume = volume + 20;
-            preferences.putInt("valume", volume);
+            askquestion = "音量调到最大了，注意保护耳朵哦";
+        }else if(volume < 100){
+            volume = volume + 30;
+            if(volume > 100){
+                volume = 100;
+            }
             setVolume();
             askquestion = "已为你增大音量";
         }else{
@@ -643,12 +645,13 @@ int dealCommand(){
     {   
         if(askquestion.indexOf("最小") >-1){
             volume = 10;
-            preferences.putInt("valume", volume);
             setVolume();
-            askquestion = "音量减到最小了";   
-        }else if(volume>=30){
-            volume = volume - 20;
-            preferences.putInt("valume", volume);
+            askquestion = "音量减到最小，注意仔细听哦";   
+        }else if(volume > 10){
+            volume = volume - 30;
+            if(volume < 10){
+                volume =10;
+            }
             askquestion = "已为你减小音量";
             setVolume();
         }else{
@@ -757,6 +760,8 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
     {
         // 向串口输出提示信息
         Serial.println("Send message to xunfeiyun");
+        uint32_t current_time = esp_timer_get_time();
+        printf("Time since STT connection: %"PRId32" ms\r\n", (current_time - stt_connect_time) / 1000);
 
         // 初始化变量
         int silence = 0;
@@ -925,8 +930,12 @@ void ConnServerAI()
     
 }
 
+
 void ConnServerASR()
 {
+    stt_connect_time = esp_timer_get_time();
+    
+    printf("Time since STT connection-start: %"PRId32" ms\r\n", (stt_connect_time));
     // Serial.println("urlASR:" + urlASR);
     webSocketClientASR.onMessage(onMessageCallbackASR);
     webSocketClientASR.onEvent(onEventsCallbackASR);
@@ -1190,6 +1199,8 @@ void setup()
     getTimeFromServer();
 
     volume = preferences.getInt("volume", 50);
+    Serial.print("初始化-当前音量：");
+    Serial.println(volume);
     setVolume();
 
     // 使用当前日期生成WebSocket连接的URL
@@ -1208,6 +1219,7 @@ void setVolume()
     // 设置音频输出引脚和音量
     audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
     audioTTS.setVolume(volume);
+    preferences.putInt("valume", volume);
 }
 
 void startWIfiAP(bool isOpen)
