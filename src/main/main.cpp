@@ -625,8 +625,8 @@ int dealCommand(){
             preferences.putInt("valume", volume);
             setVolume();
             askquestion = "音量已调到最大，注意保护耳朵哦";
-        }else if(volume < 100){
-            volume = volume + 10;
+        }else if(volume <= 80){
+            volume = volume + 20;
             preferences.putInt("valume", volume);
             setVolume();
             askquestion = "已为你增大音量";
@@ -642,12 +642,12 @@ int dealCommand(){
     else if (askquestion.indexOf("小") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
     {   
         if(askquestion.indexOf("最小") >-1){
-            volume = 30;
+            volume = 10;
             preferences.putInt("valume", volume);
             setVolume();
             askquestion = "音量减到最小了";   
-        }else if(volume>=40){
-            volume = volume - 10;
+        }else if(volume>=30){
+            volume = volume - 20;
             preferences.putInt("valume", volume);
             askquestion = "已为你减小音量";
             setVolume();
