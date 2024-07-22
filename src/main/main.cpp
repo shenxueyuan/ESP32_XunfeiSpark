@@ -108,6 +108,7 @@ String sendMsgToQwenAILLM(String queston);
 void getBaiduAccessToken();
 void segmentAnswer();
 int dealCommand();
+void setPerConfig();
 void sendMsgToXunfeiAILLM();
 void startWIfiAP(bool isOpen);
 
@@ -602,7 +603,7 @@ int dealCommand(){
         askquestion = welcomeATM;
         roleContent = roleAoteMan;
         per = "5003";
-        preferences.putString("per", per);
+        setPerConfig();
         connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
@@ -613,7 +614,7 @@ int dealCommand(){
         askquestion = welcome;
         roleContent = roleDaxiang;
         per = "5118";
-        preferences.putString("per", per);
+        setPerConfig();
         connecttospeech(askquestion.c_str());
         // 打印内容
         askquestion = "";
@@ -681,7 +682,7 @@ int dealCommand(){
         
         roleContent = roleAoteMan;
         per = "5118";
-        preferences.putString("per", per);
+        setPerConfig();
         llmType = 2;
         getBaiduAccessToken();
         connecttospeech(askquestion.c_str());
@@ -750,6 +751,13 @@ int dealCommand(){
         flag = 0;// 未命中任务
     }
     return flag;
+}
+
+void setPerConfig()
+{
+    preferences.begin("esp_config");
+    preferences.putString("per", per);
+    preferences.end();
 }
 
 // 录音
@@ -1180,13 +1188,17 @@ void setup()
     // 初始化音频模块audioRecord
     audioRecord.init();
     
-
     // 初始化 Preferences
-    preferences.begin("wifi-config");
+    preferences.begin("esp_config");
 
     per = preferences.getString("per","5118");
-    
     accessToken = preferences.getString("accessToken");
+
+    volume = preferences.getInt("volume", 50);
+    audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+    audioTTS.setVolume(volume);
+
+    preferences.end();
 
     // addWifi();
     int result = wifiConnect();
@@ -1197,11 +1209,6 @@ void setup()
 
     // 从服务器获取当前时间
     getTimeFromServer();
-
-    volume = preferences.getInt("volume", 50);
-    Serial.print("初始化-当前音量：");
-    Serial.println(volume);
-    setVolume();
 
     // 使用当前日期生成WebSocket连接的URL
     url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
@@ -1216,10 +1223,13 @@ void setup()
 
 void setVolume()
 {
+    preferences.begin("esp_config");
     // 设置音频输出引脚和音量
     audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
     audioTTS.setVolume(volume);
+
     preferences.putInt("valume", volume);
+    preferences.end();
 }
 
 void startWIfiAP(bool isOpen)
