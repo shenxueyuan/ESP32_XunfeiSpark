@@ -65,7 +65,7 @@ int receiveFrame = 0;
 int noise = 50;
 int volume = 50;// 音量大小
 int textLimit=100; // 超过多长 要分割，立马播放
-int llmType = 1; // 1:讯飞AI 2:通义千问
+int llmType = 2; // 1:讯飞AI 2:通义千问
 HTTPClient https; // 创建一个HTTP客户端对象
 
 hw_timer_t *timer = NULL; // 定义硬件定时器对象
@@ -419,40 +419,81 @@ void segmentAnswer(){
     }
     int lastPeriodIndex = Answer.indexOf("。");
 
-    if (lastPeriodIndex != -1){
+    while(lastPeriodIndex != -1 ){
         answer = Answer.substring(0, lastPeriodIndex + 1);
+        Serial.print("answer-start:");
+        Serial.println(answer);
         subAnswers.push_back(answer.c_str());
         Answer = Answer.substring(lastPeriodIndex + 2);
-
+        lastPeriodIndex = Answer.indexOf("。");
+    }
+ 
+    int secondIndex = Answer.indexOf("，");
+    while(secondIndex != -1 ){
+        answer = Answer.substring(0, secondIndex + 1);
+        Serial.print("answer-start:");
+        Serial.println(answer);
+        subAnswers.push_back(answer.c_str());
+        Answer = Answer.substring(secondIndex + 2);
+        secondIndex = Answer.indexOf("，");
+    }
+ 
+    answer = Answer.substring(0, Answer.length());
+    if(answer.length() >= 5){
+        subAnswers.push_back(answer.c_str());
         startPlay = true;
     }
-    
-    const char *chinesePunctuation = "。！？，：；,.";
+    startPlay = true;
+    Answer = "";
 
-    int lastChineseSentenceIndex = -1;
+    // if (secondIndex != -1){
+    //     answer = Answer.substring(0, secondIndex + 1);
+    //     Serial.print("answer-middle:");
+    //     Serial.println(answer);
+    //     subAnswers.push_back(answer.c_str());
+    //     Answer = Answer.substring(secondIndex + 2);
+    // }
 
-    for (int i = 0; i < Answer.length(); ++i){
-        char currentChar = Answer.charAt(i);
-        if (strchr(chinesePunctuation, currentChar) != NULL){
-            lastChineseSentenceIndex = i;
-        }
-    }
-    if (lastChineseSentenceIndex != -1){
-        answer = Answer.substring(0, lastChineseSentenceIndex + 1);
-        if(answer.length() >= 5){
-            subAnswers.push_back(answer.c_str());
-            startPlay = true;
-        }
-        Answer = Answer.substring(lastChineseSentenceIndex + 2);
-        segmentAnswer();
-    }else{
-        answer = Answer.substring(0, Answer.length());
-        if(answer.length() >= 5){
-            subAnswers.push_back(answer.c_str());
-            startPlay = true;
-        }
-        Answer = "";
-    }
+    // if(lastPeriodIndex == -1 && secondIndex == -1 ){
+    //     answer = Answer.substring(0, Answer.length());
+    //     Serial.print("answer-end:");
+    //     Serial.println(answer);
+    //     if(answer.length() >= 5){
+    //         subAnswers.push_back(answer.c_str());
+    //         startPlay = true;
+    //     }
+    //     Answer = "";
+    // }else{
+    //     startPlay = true;
+    //     segmentAnswer();
+    // }
+
+    // const char *chinesePunctuation = "。，！？：；,.";
+
+    // int lastChineseSentenceIndex = -1;
+
+    // for (int i = 0; i < Answer.length(); ++i){
+    //     char currentChar = Answer.charAt(i);
+    //     if (strchr(chinesePunctuation, currentChar) != NULL){
+    //         lastChineseSentenceIndex = i;
+    //     }
+    // }
+    // if (lastChineseSentenceIndex != -1){
+    //     answer = Answer.substring(0, lastChineseSentenceIndex + 1);
+    //     if(answer.length() >= 5){
+    //         subAnswers.push_back(answer.c_str());
+    //         startPlay = true;
+    //     }
+    //     Answer = Answer.substring(lastChineseSentenceIndex + 2);
+    //     segmentAnswer();
+    // }else{
+        // answer = Answer.substring(0, Answer.length());
+        // if(answer.length() >= 5){
+        //     subAnswers.push_back(answer.c_str());
+        //     startPlay = true;
+        // }
+        // Answer = "";
+    // }
     
 }
 
@@ -494,11 +535,11 @@ void onMessageCallbackASR(WebsocketsMessage message)
         Serial.println(message.data());
         receiveFrame = 0;
 
-        if(llmType==1){
-            connecttospeech(answerHello.c_str());
-        }else{
-            connecttospeech(answerHello2.c_str());
-        }
+        // if(llmType==1){
+        //     connecttospeech(answerHello.c_str());
+        // }else{
+        //     connecttospeech(answerHello2.c_str());
+        // }
 
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
@@ -772,7 +813,8 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
         // 向串口输出提示信息
         Serial.println("Send message to xunfeiyun");
         uint32_t current_time = esp_timer_get_time();
-        printf("Time since STT connection: %"PRId32" ms\r\n", (current_time - stt_connect_time) / 1000);
+        Serial.print("Time since STT connection: ");
+        Serial.println((current_time - stt_connect_time) / 1000);
 
         // 初始化变量
         int silence = 0;
@@ -945,8 +987,9 @@ void ConnServerAI()
 void ConnServerASR()
 {
     stt_connect_time = esp_timer_get_time();
+    Serial.print("Time since STT connectio-startn: ");
+    Serial.println(stt_connect_time);
     
-    printf("Time since STT connection-start: %"PRId32" ms\r\n", (stt_connect_time));
     // Serial.println("urlASR:" + urlASR);
     webSocketClientASR.onMessage(onMessageCallbackASR);
     webSocketClientASR.onEvent(onEventsCallbackASR);
@@ -1323,6 +1366,7 @@ void clickAndStart()
     loopcount++;
     // 停止播放音频
     audioTTS.isplaying = 0;
+    audioTTS.pauseResume();
     startPlay = false;
     isReady = false;
     Answer = "";
