@@ -884,7 +884,7 @@ void Audio2::UTF8toASCII(char *str)
 //---------------------------------------------------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------------------------------------------------
-bool Audio2::connecttospeech(const char *speech, const char *lang, const char *per, const char *tok)
+bool Audio2::connecttospeech(const char *speech, const char *lang, const char *per, const char *tok,const char * cuid)
 {
 
     xSemaphoreTakeRecursive(mutex_audio, portMAX_DELAY);
@@ -918,8 +918,9 @@ bool Audio2::connecttospeech(const char *speech, const char *lang, const char *p
     strcat(resp, speechBuff);
     strcat(resp, "&tok=");
     strcat(resp, tok);
-    strcat(resp, "&cuid=AIFWYVLm5xw8l7zVDWPnwBMAURmvPd6C&");// 唯一标识计算UV值，建议 机器MAC、或者IMEI码
-    strcat(resp, "ctp=1&");
+    strcat(resp, "&cuid=");// 唯一标识计算UV值，建议 机器MAC、或者IMEI码
+    strcat(resp, cuid);
+    strcat(resp, "&ctp=1&");
     strcat(resp, "lan=zh&");//
     strcat(resp, "spd=6&");// 语速 0-9
     strcat(resp, "pit=6&");// 音调0-9

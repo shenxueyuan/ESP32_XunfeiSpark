@@ -18,6 +18,12 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
+// 生成随机数
+#include <iostream>  
+#include <string>  
+#include <random>  
+#include <chrono> 
+
 using namespace websockets;
 
 // 定义引脚和常量
@@ -51,6 +57,7 @@ String answerHello = "嗯，收到。";
 String answerHello2 = "收到。";
 String accessToken = "24.e6e04657327b33f31c8927d754e54823.2592000.1723806315.282335 - 86622984";
 boolean wifiFlag = true;
+String deviceToken = "";
 
 
 // 定义一些全局变量
@@ -64,7 +71,7 @@ int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
 int volume = 50;// 音量大小
-int textLimit=120; // 超过多长 要分割，立马播放
+int textLimit=100; // 超过多长 要分割，立马播放
 int llmType = 2; // 1:讯飞AI 2:通义千问
 HTTPClient https; // 创建一个HTTP客户端对象
 
@@ -98,6 +105,7 @@ void handleList(AsyncWebServerRequest *request);
 void handleSaveMusic(AsyncWebServerRequest *request);
 void handleDeleteMusic(AsyncWebServerRequest *request);
 void handleListMusic(AsyncWebServerRequest *request);
+String generateRandomString(size_t length);
 
 void getText(String role, String content);
 void checkLen();
@@ -108,7 +116,7 @@ void ConnServerAliASR();
 
 
 void connecttospeech(String content);
-String sendMsgToQwenAILLM(String queston);
+void sendMsgToQwenAILLM(String queston);
 void getBaiduAccessToken();
 void segmentAnswer();
 int dealCommand();
@@ -116,8 +124,6 @@ void sendMsgToXunfeiAILLM();
 void startWIfiAP(bool isOpen);
 
 // 创建动态JSON文档对象和数组
-// DynamicJsonDocument doc(4096);
-// JsonArray text = doc.to<JsonArray>();
 std::vector<String> text;
 
 // 定义字符串变量
@@ -138,7 +144,7 @@ String text_temp = "";
 
 String welcome = "小朋友，你好啊，我是大象，快来跟我聊天吧";
 String welcomeATM = "小朋友，你好啊，我是赛文奥特曼，让我们一起来拯救地球吧！";
-String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
+String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，答案缩减到100字以内;";
 String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
 String roleContent = roleDaxiang;
 
@@ -253,7 +259,7 @@ void onMessageCallbackAI(WebsocketsMessage message)
                 }
                 else
                 {
-                    const char *chinesePunctuation = "？，！：；,.";
+                    const char *chinesePunctuation = "[.,;!?()<>‘。、，；！？《》（）“”‘’]";
 
                     int lastChineseSentenceIndex = -1;
 
@@ -272,13 +278,6 @@ void onMessageCallbackAI(WebsocketsMessage message)
                         connecttospeech(answer.c_str());
                         Serial.print("speech-line224");
                         Answer = Answer.substring(lastChineseSentenceIndex + 2);
-                    }
-                    else
-                    {
-                        String answer = Answer.substring(0, textLimit);
-                        connecttospeech(answer.c_str());
-                        Serial.print("speech-line230");
-                        Answer = Answer.substring(textLimit + 1);
                     }
                 }
                 startPlay = true;
@@ -302,7 +301,8 @@ void onMessageCallbackAI(WebsocketsMessage message)
 
 // 统一调用百度TTS
 void connecttospeech(String content){
-    audioTTS.connecttospeech(content.c_str(), "zh",per.c_str(),accessToken.c_str());
+    delay(200);
+    audioTTS.connecttospeech(content.c_str(), "zh",per.c_str(),accessToken.c_str(),deviceToken.c_str());
 }
 
 
@@ -350,36 +350,42 @@ void sendMsgToXunfeiAILLM()
 
     // 通过WebSocket客户端发送JSON字符串到服务器
     webSocketClientAI.send(jsonString);
+    jsonData.clear();
 }
 
-
-String sendMsgToQwenAILLM(String inputText) 
+// 将问题 发送给 阿里通义千问
+void sendMsgToQwenAILLM(String inputText) 
 {
   HTTPClient http;
   http.setTimeout(10000);
   http.begin(qwenApiUrl);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", String(qwenApiKey));
-  String payload = "{\"model\":\"qwen-turbo\",\"input\":{\"messages\":[{\"role\": \"system\",\"content\": \""+roleContent+"\"},{\"role\": \"user\",\"content\": \"" + inputText + "\"}]}}";
+  String payload = "{\"model\":\"qwen-turbo\",\"max_tokens\":100,\"input\":{\"messages\":[{\"role\": \"system\",\"content\": \""+roleContent+"\"},{\"role\": \"user\",\"content\": \"" + inputText + "\"}]}}";
   int httpResponseCode = http.POST(payload);
   if (httpResponseCode == 200) {
     String response = http.getString();
     http.end();
-    // Serial.println(response);
-
-    // Parse JSON response
-    // DynamicJsonDocument jsonDoc(1024);
+   
     StaticJsonDocument<1024> jsonDoc;
     deserializeJson(jsonDoc, response);
     String outputText = jsonDoc["output"]["text"];
-    // return outputText;
-    Serial.print("qwen--answer:");
-    Serial.println(outputText);
-    return outputText;
+    Serial.print("qwen--answer:");Serial.println(outputText);
+    
+    Answer = outputText;
+
+    if(Answer.endsWith("。")){
+        Answer = Answer.substring(0,Answer.length()-1);
+        // Answer +="，回答完毕。";
+    }else{
+        // Answer +="回答完毕。";
+    }
+    segmentAnswer();
+    jsonDoc.clear();
+    outputText.clear();
   } else {
     http.end();
     Serial.printf("通义千问error %i \n", httpResponseCode);
-    return "";
   }
 }
 
@@ -421,48 +427,37 @@ void segmentAnswer(){
     }
     int lastPeriodIndex = Answer.indexOf("。");
 
-    if (lastPeriodIndex != -1){
+    while(lastPeriodIndex != -1 ){
         answer = Answer.substring(0, lastPeriodIndex + 1);
         subAnswers.push_back(answer.c_str());
         Answer = Answer.substring(lastPeriodIndex + 2);
-
+        lastPeriodIndex = Answer.indexOf("。");
         startPlay = true;
     }
-    
-    const char *chinesePunctuation = "。！？，：；,.";
-
-    int lastChineseSentenceIndex = -1;
-
-    for (int i = 0; i < Answer.length(); ++i){
-        char currentChar = Answer.charAt(i);
-        if (strchr(chinesePunctuation, currentChar) != NULL){
-            lastChineseSentenceIndex = i;
-        }
+ 
+    int secondIndex = Answer.indexOf("，");
+    while(secondIndex != -1 ){
+        answer = Answer.substring(0, secondIndex + 1);
+        subAnswers.push_back(answer.c_str());
+        Answer = Answer.substring(secondIndex + 2);
+        secondIndex = Answer.indexOf("，");
+        startPlay = true;
     }
-    if (lastChineseSentenceIndex != -1){
-        answer = Answer.substring(0, lastChineseSentenceIndex + 1);
-        if(answer.length() >= 5){
-            subAnswers.push_back(answer.c_str());
-            startPlay = true;
-        }
-        Answer = Answer.substring(lastChineseSentenceIndex + 2);
-        segmentAnswer();
-    }else{
-        answer = Answer.substring(0, Answer.length());
-        if(answer.length() >= 5){
-            subAnswers.push_back(answer.c_str());
-            startPlay = true;
-        }
-        Answer = "";
+ 
+    answer = Answer.substring(0, Answer.length());
+    if(answer.length() >= 5){
+        subAnswers.push_back(answer.c_str());
+        startPlay = true;
     }
-    
+    Answer = "";
 }
 
-// 将接收到的语音转成文本
-void onMessageCallbackAliASR(WebsocketsMessage message)
-{
+
+void onMessageCallbackAliASR(WebsocketsMessage message){
+
     // 创建一个静态JSON文档对象，用于存储解析后的JSON数据，最大容量为4096字节
     StaticJsonDocument<2048> jsonDocument;
+
     // 解析收到的JSON数据
     DeserializationError error = deserializeJson(jsonDocument, message.data());
 
@@ -474,24 +469,12 @@ void onMessageCallbackAliASR(WebsocketsMessage message)
         Serial.println(message.data());
         return;
     }
-    // 如果解析没有错误
 
-    // 从JSON数据中获取返回码
+     // 从JSON数据中获取返回码
     int code = jsonDocument["code"];
-    // 如果返回码不为0，表示出错
-    if (code != 0)
-    {
-        // 输出错误码和完整的JSON数据
-        Serial.println(code);
-        Serial.println(message.data());
+    Serial.println("code:");
+    Serial.println(code);
 
-        // 关闭WebSocket客户端
-        webSocketClientASR.close();
-    }
-    else
-    {
-        
-    }
 }
 
 // 将接收到的语音转成文本
@@ -532,11 +515,11 @@ void onMessageCallbackASR(WebsocketsMessage message)
         Serial.println(message.data());
         receiveFrame = 0;
 
-        if(llmType==1){
-            connecttospeech(answerHello.c_str());
-        }else{
-            connecttospeech(answerHello2.c_str());
-        }
+        // if(llmType==1){
+        //     connecttospeech(answerHello.c_str());
+        // }else{
+        //     connecttospeech(answerHello2.c_str());
+        // }
 
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
@@ -566,7 +549,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
             // 如果问句为空，播放错误提示语音
             if (askquestion == "")
             {
-                askquestion = "未听到说话，本轮应答结束，请开启下一轮问答。";
+                askquestion = "我先退下了，有需要再叫唤醒我吧。";
                 connecttospeech(askquestion.c_str());
             }
             else
@@ -585,9 +568,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
                         ConnServerAI();
                     }else if(llmType ==2){
                         // 发送给 通义千问大模型
-                        Answer = sendMsgToQwenAILLM(askquestion);
-                        Answer +="回答完毕。";
-                        segmentAnswer();
+                        sendMsgToQwenAILLM(askquestion);
                     }
                 }
             }
@@ -610,14 +591,6 @@ int dealCommand(){
         startWIfiAP(false);
         askquestion = "已为你关闭网络。";
         connecttospeech(askquestion.c_str());
-        askquestion = "";
-        conflag = 1;
-    }
-    else if (askquestion.indexOf("开") > -1 && askquestion.indexOf("灯") > -1)
-    {
-        askquestion = "灯已打开";
-        connecttospeech(askquestion.c_str());
-        // 打印内容
         askquestion = "";
         conflag = 1;
     }
@@ -674,7 +647,11 @@ int dealCommand(){
             setVolume();
             askquestion = "音量调到最大了，注意保护耳朵哦";
         }else if(volume < 100){
-            volume = volume + 30;
+            if(volume < 50){
+                volume = volume + 30;
+            }else{
+                volume = volume + 20;
+            }
             if(volume > 100){
                 volume = 100;
             }
@@ -692,13 +669,17 @@ int dealCommand(){
     else if (askquestion.indexOf("小") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
     {   
         if(askquestion.indexOf("最小") >-1){
-            volume = 5;
+            volume = 30;
             setVolume();
             askquestion = "音量减到最小，注意仔细听哦";   
         }else if(volume > 10){
-            volume = volume - 30;
-            if(volume < 10){
-                volume = 10;
+            if(volume <= 50){
+                volume = volume - 10;
+            }else if(volume <= 80){
+                volume = volume - 20;
+            }
+            if(volume < 30){
+                volume = 30;
             }
             askquestion = "已为你减小音量";
             setVolume();
@@ -707,13 +688,6 @@ int dealCommand(){
         }
         connecttospeech(askquestion.c_str());
         // 打印内容
-        askquestion = "";
-        conflag = 1;
-    }
-    else if (askquestion.indexOf("关") > -1 && askquestion.indexOf("灯") > -1)
-    {
-        askquestion = "灯已关闭";
-        connecttospeech(askquestion.c_str());
         askquestion = "";
         conflag = 1;
     }
@@ -734,71 +708,75 @@ int dealCommand(){
         getBaiduAccessToken();
         connecttospeech(askquestion.c_str());
         askquestion = "";
-        conflag = 0;
+        conflag = 1;
     }
     else if (((askquestion.indexOf("听") > -1 || askquestion.indexOf("放") > -1) && (askquestion.indexOf("歌") > -1 || askquestion.indexOf("音乐") > -1)) || mainStatus == 1)
+    {
+        String musicName = "";
+        String musicID = "";
+
+        preferences.begin("music_store", true);
+
+        // 查找音乐名称对应的ID
+        int numMusic = preferences.getInt("numMusic", 0);
+        for (int i = 0; i < numMusic; ++i)
         {
-            String musicName = "";
-            String musicID = "";
-
-            preferences.begin("music_store", true);
-
-            // 查找音乐名称对应的ID
-            int numMusic = preferences.getInt("numMusic", 0);
-            for (int i = 0; i < numMusic; ++i)
+            musicName = preferences.getString(("musicName" + String(i)).c_str(), "");
+            musicID = preferences.getString(("musicId" + String(i)).c_str(), "");
+            Serial.println("音乐名称: " + musicName);
+            Serial.println("音乐ID: " + musicID);
+            if (askquestion.indexOf(musicName.c_str()) > -1)
             {
-                musicName = preferences.getString(("musicName" + String(i)).c_str(), "");
-                musicID = preferences.getString(("musicId" + String(i)).c_str(), "");
-                Serial.println("音乐名称: " + musicName);
-                Serial.println("音乐ID: " + musicID);
-                if (askquestion.indexOf(musicName.c_str()) > -1)
-                {
-                    Serial.println("找到了！");
-                    break;
-                }
-                else
-                {
-                    musicID = "";
-                }
+                Serial.println("找到了！");
+                break;
             }
-
-            // 输出结果
-            if (musicID == "") {
-                mainStatus = 1;
-                Serial.println("未找到对应的音乐");
-                getText("user", askquestion);
-                askquestion = "";
-                lastsetence = false;
-                isReady = true;
-                // todo 提问 大模型
-                ConnServerAI();
-            } else {
-                // 自建音乐服务器，按照文件名查找对应歌曲
-                mainStatus = 0;
-                String audioStreamURL = "https://music.163.com/song/media/outer/url?id=" + musicID + ".mp3";
-                Serial.println(audioStreamURL.c_str());
-                audioTTS.connecttohost(audioStreamURL.c_str());
-                delay(2000);
-
-                askquestion = "正在播放音乐：" + musicName;
-                Serial.println(askquestion);
-                Serial.println("音乐名称: " + musicName);
-                Serial.println("音乐ID: " + musicID);
-                askquestion = "";
-                // 设置播放开始标志
-                startPlay = true;
-                flag = 1;
-                Answer = "音乐播放完了，主人还想听什么音乐吗？";
-                conflag = 1;
+            else
+            {
+                musicID = "";
             }
-            preferences.end();
         }
+
+        // 输出结果
+        if (musicID == "") {
+            mainStatus = 1;
+            Serial.println("未找到对应的音乐");
+            lastsetence = false;
+            isReady = true;
+            // todo 提问 大模型
+            if(llmType == 1){
+                getText("user", askquestion);
+                ConnServerAI();
+            }else{
+                sendMsgToQwenAILLM(askquestion);
+            }
+        } else {
+            // 自建音乐服务器，按照文件名查找对应歌曲
+            mainStatus = 0;
+            String audioStreamURL = "https://music.163.com/song/media/outer/url?id=" + musicID + ".mp3";
+            Serial.println(audioStreamURL.c_str());
+            audioTTS.connecttohost(audioStreamURL.c_str());
+            delay(2000);
+
+            askquestion = "正在播放音乐：" + musicName;
+            Serial.println(askquestion);
+            Serial.println("音乐名称: " + musicName);
+            Serial.println("音乐ID: " + musicID);
+            askquestion = "";
+            // 设置播放开始标志
+            startPlay = true;
+            flag = 1;
+            Answer = "音乐播放完了，主人还想听什么音乐吗？";
+            conflag = 1;
+        }
+        preferences.end();
+    }
     
     else{
         flag = 0;// 未命中任务
     }
     return flag;
 }
+
 // 录音
 void onEventsCallbackAliASR(WebsocketsEvent event, String data)
 {
@@ -807,8 +785,6 @@ void onEventsCallbackAliASR(WebsocketsEvent event, String data)
     {
         // 向串口输出提示信息
         Serial.println("Send message to ali");
-        uint32_t current_time = esp_timer_get_time();
-        printf("Time since STT ali - connection: %"PRId32" ms\r\n", (current_time - stt_connect_time) / 1000);
 
         // 初始化变量
         int silence = 0;
@@ -828,7 +804,10 @@ void onEventsCallbackAliASR(WebsocketsEvent event, String data)
             doc.clear();
 
             // 创建data对象
-            JsonObject data = doc.createNestedObject("data");
+            
+            JsonObject header = doc.createNestedObject("header");
+
+            JsonObject payload = doc.createNestedObject("payload");
 
             // 录制音频数据
             audioRecord.Record();
@@ -867,64 +846,41 @@ void onEventsCallbackAliASR(WebsocketsEvent event, String data)
                 silence = 0;
             }
 
-            // 如果静音达到8个周期，发送结束标志的音频数据
-            if (silence == 8)
-            {
-                data["status"] = 2;
-                data["format"] = "audio/L16;rate=8000";
-                data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
-                data["encoding"] = "raw";
-                j++;
+            header["appkey"] = qwenApiKey;
+            header["message_id"] = generateRandomString(32);
+            header["task_id"] = deviceToken;
+            header["namespace"] = "SpeechTranscriber";
+            header["name"] = "StartTranscription";
 
-                String jsonString;
-                serializeJson(doc, jsonString);
-
-                webSocketClientAliASR.send(jsonString);
-                delay(40);
-                break;
+            // 如果静音达到8个周期，发送结束标志的音频数据，Payload为空
+            if (silence == 8) {
+                header["name"] = "StopTranscription";
             }
-
-            // 处理第一帧音频数据
+              // 处理第一帧音频数据
             if (firstframe == 1)
             {
-                data["status"] = 0;
-                data["format"] = "audio/L16;rate=8000";
-                data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
-                data["encoding"] = "raw";
-                j++;
 
-                JsonObject common = doc.createNestedObject("common");
-                common["app_id"] = appId1;
-
-                JsonObject business = doc.createNestedObject("business");
-                business["domain"] = "iat";
-                business["language"] = "zh_cn";
-                business["accent"] = "mandarin";
-                // 不使用动态修正
-                business["vinfo"] = 1;
-                business["vad_eos"] = 1000;
-
-                String jsonString;
-                serializeJson(doc, jsonString);
-
-                webSocketClientAliASR.send(jsonString);
-                firstframe = 0;
-                delay(40);
             }
-            else
-            {
-                // 处理后续帧音频数据
-                data["status"] = 1;
-                data["format"] = "audio/L16;rate=8000";
-                data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
-                data["encoding"] = "raw";
-
-                String jsonString;
-                serializeJson(doc, jsonString);
-
-                webSocketClientAliASR.send(jsonString);
-                delay(40);
+            else{
+                // 发送音频数据
+                payload["format"] = "wav";
+                payload["sample_rate"] = 8000;
+                
+                webSocketClientAliASR.sendBinary(base64::encode((byte *)audioRecord.wavData[0], 1280));
             }
+            
+
+           
+            j++;
+
+
+            String jsonString;
+            serializeJson(doc, jsonString);
+
+            webSocketClientAliASR.send(jsonString);
+            firstframe = 0;
+            delay(40);
+            
         }
     }
     // 当WebSocket连接关闭时触发
@@ -956,7 +912,8 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
         // 向串口输出提示信息
         Serial.println("Send message to xunfeiyun");
         uint32_t current_time = esp_timer_get_time();
-        printf("Time since STT connection: %"PRId32" ms\r\n", (current_time - stt_connect_time) / 1000);
+        Serial.print("Time since STT connection: ");
+        Serial.println((current_time - stt_connect_time) / 1000);
 
         // 初始化变量
         int silence = 0;
@@ -987,7 +944,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
 
             if(null_voice >= 80)
             {
-                connecttospeech("未听到说话，本轮应答结束，请开启下一轮问答。");
+                connecttospeech("我先退下了，有需要再叫我吧。");
                 webSocketClientASR.close();
                 return;
             }
@@ -1048,7 +1005,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
                 business["domain"] = "iat";
                 business["language"] = "zh_cn";
                 business["accent"] = "mandarin";
-                // 不使用动态修正
+                // // 不使用动态修正
                 business["vinfo"] = 1;
                 // 使用动态修正
                 // business["dwa"] = "wpgs";
@@ -1145,8 +1102,9 @@ void connServerAliASR(){
 void ConnServerASR()
 {
     stt_connect_time = esp_timer_get_time();
-    
-    printf("Time since STT ali - connection-start: %"PRId32" ms\r\n", (stt_connect_time));
+    Serial.print("Time since STT connectio-startn: ");
+    Serial.println(stt_connect_time);
+
     // Serial.println("urlASR:" + urlASR);
     webSocketClientASR.onMessage(onMessageCallbackASR);
     webSocketClientASR.onEvent(onEventsCallbackASR);
@@ -1169,10 +1127,11 @@ void voicePlay()
     {
         if (subindex < subAnswers.size())
         {
-            delay(200);
             connecttospeech(subAnswers[subindex].c_str());
             subindex++;
             conflag = 1;
+            // 设置开始播放标志
+            startPlay = true;
         }
         else
         {
@@ -1181,8 +1140,6 @@ void voicePlay()
             startPlay = false;
             conflag = 1;
         }
-        // 设置开始播放标志
-        startPlay = true;
     }
     else
     {
@@ -1278,7 +1235,7 @@ int wifiConnect()
  
 
 // https://www.xfyun.cn/doc/spark/general_url_authentication.html#_1-2-%E9%89%B4%E6%9D%83%E5%8F%82%E6%95%B0
-String getUrl(String Spark_url, String host, String path, String Date)
+String getXunFeiUrl(String Spark_url, String host, String path, String Date)
 {
     // 拼接签名原始字符串
     String signature_origin = "host: " + host + "\n";
@@ -1329,7 +1286,7 @@ String getUrl(String Spark_url, String host, String path, String Date)
     return url;
 }
 
-
+// 更新WebSocket连接的URL
 void getTimeFromServer()
 {
     // 定义用于获取时间的URL
@@ -1362,6 +1319,9 @@ void getTimeFromServer()
     // 结束HTTP连接
     http.end();
 
+    // 更新WebSocket连接的URL
+    setXunFeiUrl();
+    
     // 根据实际情况可以添加延时，以便避免频繁请求
     // delay(50); // 可以根据实际情况调整延时时间
 }
@@ -1399,6 +1359,15 @@ void setup()
     
     accessToken = preferences.getString("accessToken");
 
+    deviceToken = preferences.getString("deviceToken");
+
+    if(deviceToken == ""){
+        deviceToken = generateRandomString(32);
+        preferences.putString("deviceToken",deviceToken);
+        Serial.print("deviceToken:");
+        Serial.println(deviceToken);
+    }
+
     // addWifi();
     int result = wifiConnect();
     // 如果网络未连接，打开AP网络
@@ -1416,17 +1385,15 @@ void setup()
     Serial.print("初始化-当前音量：");
     Serial.println(volume);
 
-    // 使用当前日期生成WebSocket连接的URL
-    url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-    urlASR = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
-
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
 
     delay(2000);
+
     // getBaiduAccessToken();
 }
 
+// 调整音量
 void setVolume()
 {
     preferences.begin("volume-config");
@@ -1438,7 +1405,7 @@ void setVolume()
     Serial.println(volume);
     preferences.end();
 }
-
+// 开启 AP 网络
 void startWIfiAP(bool isOpen)
 {
     if(isOpen){
@@ -1524,6 +1491,7 @@ void clickAndStart()
     loopcount++;
     // 停止播放音频
     audioTTS.isplaying = 0;
+    audioTTS.pauseResume();
     startPlay = false;
     isReady = false;
     Answer = "";
@@ -1534,16 +1502,12 @@ void clickAndStart()
 
     adc_start_flag = 1;
 
-    // 如果距离上次时间同步超过4分钟
-    if (urlTime + 240000 < millis()) // 超过4分钟，重新做一次鉴权
-    {
+    // 如果距离上次时间同步超过4分钟 // 超过4分钟，重新做一次鉴权
+    if (urlTime + 240000 < millis()) {
         // 更新时间戳
         urlTime = millis();
         // 从服务器获取当前时间
         getTimeFromServer();
-        // 更新WebSocket连接的URL
-        url = getUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
-        urlASR = getUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
     }
     askquestion = "";
 
@@ -1551,6 +1515,13 @@ void clickAndStart()
     ConnServerASR();
     
     adc_complete_flag = 0;
+}
+
+// 设置websocket API地址 ，用于鉴权鉴权
+void setXunFeiUrl()
+{
+    url = getXunFeiUrl("ws://spark-api.xf-yun.com/v4.0/chat", "spark-api.xf-yun.com", "/v4.0/chat", Date);
+    urlASR = getXunFeiUrl("ws://iat-api.xfyun.cn/v2/iat", "iat-api.xfyun.cn", "/v2/iat", Date);
 }
 
 // 显示文本
@@ -1579,37 +1550,14 @@ void getText(String role, String content)
     for (const auto& jsonStr : text) {
         Serial.println(jsonStr);
     }
-    
-    /*/ 将生成的JSON文档添加到全局变量text中
-    text.add(jsoncon);
-
-    // 序列化全局变量text中的内容为字符串
-    String serialized;
-    serializeJson(text, serialized);
-
-    // 输出序列化后的JSON字符串到串口
-    Serial.print("text: ");
-    Serial.println(serialized);*/
 
     // 清空临时JSON文档
     jsoncon.clear();
-    // 也可以使用格式化的方式输出JSON，以下代码被注释掉了
-    // serializeJsonPretty(text, Serial);
 }
 
 // 实时清理较早的历史对话记录
 void checkLen()
 {
-    /*Serial.print("text size:");
-    Serial.println(text.memoryUsage());
-    // 计算jsonVector占用的字节数
-    // 当JSON数组中的字符串总长度超过1600字节时，进入循环
-    if (text.memoryUsage() > 1600)
-    {
-        // 移除数组中的第一对问答
-        text.remove(0);
-        text.remove(0);
-    }*/
     size_t totalBytes = 0;
 
     // 计算vector中每个字符串的长度
@@ -1622,31 +1570,6 @@ void checkLen()
     {
         text.erase(text.begin(), text.begin() + 2);
     }
-    // 函数没有返回值，直接修改传入的JSON数组
-    // return textArray; // 注释掉的代码，表明此函数不返回数组
-}
-
-// https://help.aliyun.com/zh/isi/developer-reference/websocket
-DynamicJsonDocument gen_ali_asr_params(const char *appid, const char *transcription)
-{
-    // 创建一个容量为2048字节的动态JSON文档
-    DynamicJsonDocument data(1800);
-
-    // 创建一个名为header的嵌套JSON对象，并添加app_id和uid字段
-    JsonObject header = data.createNestedObject("header");
-    header["appkey"] = appid;
-    header["message_id"] = "1234";
-    header["namespace"] = "SpeechTranscriber";
-    header["name"] = transcription;// StartTranscription 指令 和 StopTranscription指令。 
- 
-    // 创建一个名为payload的嵌套JSON对象
-    JsonObject payload = data.createNestedObject("payload");
-
-    // payload["format"] = "system";
-    // payload["sample_rate"] = roleContent;
-    
-    // 返回构建好的JSON文档
-    return data;
 }
 
 DynamicJsonDocument gen_params(const char *appid, const char *domain)
@@ -1657,7 +1580,7 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain)
     // 创建一个名为header的嵌套JSON对象，并添加app_id和uid字段
     JsonObject header = data.createNestedObject("header");
     header["app_id"] = appid;
-    header["uid"] = "1234";
+    header["uid"] = deviceToken;
 
     // 创建一个名为parameter的嵌套JSON对象
     JsonObject parameter = data.createNestedObject("parameter");
@@ -1666,7 +1589,7 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain)
     JsonObject chat = parameter.createNestedObject("chat");
     chat["domain"] = domain;
     chat["temperature"] = 0.6;
-    chat["max_tokens"] = 512;
+    chat["max_tokens"] = 100;
 
     // 创建一个名为payload的嵌套JSON对象
     JsonObject payload = data.createNestedObject("payload");
@@ -1681,11 +1604,6 @@ DynamicJsonDocument gen_params(const char *appid, const char *domain)
     systemMessage["role"] = "system";
     systemMessage["content"] = roleContent;
 
-    // 遍历全局变量text中的每个元素，并将其添加到text数组中
-    /*for (const auto &item : text)
-    {
-        textArray.add(item);
-    }*/
     // 将jsonVector中的内容添加到JsonArray中
     for (const auto& jsonStr : text) {
         DynamicJsonDocument tempDoc(512);
@@ -1727,7 +1645,7 @@ float calculateRMS(uint8_t *buffer, int bufferSize)
 // 处理根路径的请求
 void handleRoot(AsyncWebServerRequest *request)
 {
-    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Configuration</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } a { display: inline-block; padding: 10px 20px; margin: 10px; border: none; background-color: #333; color: white; text-decoration: none; cursor: pointer; } a:hover { background-color: #555; }</style></head><body><h1>ESP32 Configuration</h1><a href='/wifi'>Wi-Fi Management</a><a href='/music'>Music Management</a></body></html>";
+    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>AI 智能对话 后台系统</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } a { display: inline-block; padding: 10px 20px; margin: 10px; border: none; background-color: #333; color: white; text-decoration: none; cursor: pointer; } a:hover { background-color: #555; }</style></head><body><h1>ESP32 Configuration</h1><a href='/wifi'>Wi-Fi Management</a><a href='/music'>Music Management</a></body></html>";
     request->send(200, "text/html", html);
 }
 
@@ -1745,10 +1663,6 @@ void handleMusicManagement(AsyncWebServerRequest *request)
 
 void handleSave(AsyncWebServerRequest *request)
 {
-    // tft.fillScreen(ST77XX_WHITE);
-    // u8g2.setCursor(0, 11);
-    // u8g2.print("进入网络配置！");
-
     Serial.println("Start Save!");
     String ssid = request->arg("ssid");
     String password = request->arg("password");
@@ -1762,8 +1676,6 @@ void handleSave(AsyncWebServerRequest *request)
         if (storedSsid == ssid)
         {
             preferences.putString(("password" + String(i)).c_str(), password);
-            // u8g2.setCursor(0, 11 + 12);
-            // u8g2.print("wifi密码更新成功！");
             Serial.println("Succeess Update!");
             request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Configuration Updated!</h1><p>Network password updated successfully.</p><p><a href='/'>Go Back</a></p></body></html>");
             preferences.end();
@@ -1774,8 +1686,6 @@ void handleSave(AsyncWebServerRequest *request)
     preferences.putString(("ssid" + String(numNetworks)).c_str(), ssid);
     preferences.putString(("password" + String(numNetworks)).c_str(), password);
     preferences.putInt("numNetworks", numNetworks + 1);
-    // u8g2.setCursor(0, 11 + 12);
-    // u8g2.print("新wifi添加成功！");
     Serial.println("Succeess Save!");
 
     request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Configuration Saved!</h1><p>Network information added successfully.</p><p><a href='/'>Go Back</a></p></body></html>");
@@ -1784,10 +1694,6 @@ void handleSave(AsyncWebServerRequest *request)
 
 void handleDelete(AsyncWebServerRequest *request)
 {
-    // tft.fillScreen(ST77XX_WHITE);
-    // u8g2.setCursor(0, 11);
-    // u8g2.print("进入网络配置！");
-
     Serial.println("Start Delete!");
     String ssidToDelete = request->arg("ssid");
 
@@ -1823,8 +1729,6 @@ void handleDelete(AsyncWebServerRequest *request)
             return;
         }
     }
-    // u8g2.setCursor(0, 11 + 12);
-    // u8g2.print("该wifi不存在！");
     Serial.println("Fail to Delete!");
 
     request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Network Not Found!</h1><p>The specified network was not found.</p><p><a href='/'>Go Back</a></p></body></html>");
@@ -1853,10 +1757,6 @@ void handleList(AsyncWebServerRequest *request)
 
 void handleSaveMusic(AsyncWebServerRequest *request)
 {
-    // tft.fillScreen(ST77XX_WHITE);
-    // u8g2.setCursor(0, 11);
-    // u8g2.print("进入音乐配置！");
-
     Serial.println("Start Save Music!");
     String musicName = request->arg("musicName");
     String musicId = request->arg("musicId");
@@ -1870,8 +1770,6 @@ void handleSaveMusic(AsyncWebServerRequest *request)
         if (storedMusicName == musicName)
         {
             preferences.putString(("musicId" + String(i)).c_str(), musicId);
-            // u8g2.setCursor(0, 11 + 12);
-            // u8g2.print("音乐ID更新成功！");
             Serial.println("Success Update Music!");
             request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Music Configuration</title></head><body><h1>Music ID Updated!</h1><p>Music ID updated successfully.</p><p><a href='/'>Go Back</a></p></body></html>");
             preferences.end();
@@ -1882,8 +1780,6 @@ void handleSaveMusic(AsyncWebServerRequest *request)
     preferences.putString(("musicName" + String(numMusic)).c_str(), musicName);
     preferences.putString(("musicId" + String(numMusic)).c_str(), musicId);
     preferences.putInt("numMusic", numMusic + 1);
-    // u8g2.setCursor(0, 11 + 12);
-    // u8g2.print("新音乐添加成功！");
     Serial.println("Success Save Music!");
 
     request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Music Configuration</title></head><body><h1>Music Saved!</h1><p>Music information added successfully.</p><p><a href='/'>Go Back</a></p></body></html>");
@@ -1892,10 +1788,6 @@ void handleSaveMusic(AsyncWebServerRequest *request)
 
 void handleDeleteMusic(AsyncWebServerRequest *request)
 {
-    // tft.fillScreen(ST77XX_WHITE);
-    // u8g2.setCursor(0, 11);
-    // u8g2.print("进入音乐配置！");
-
     Serial.println("Start Delete Music!");
     String musicNameToDelete = request->arg("musicName");
 
@@ -1922,8 +1814,6 @@ void handleDeleteMusic(AsyncWebServerRequest *request)
             preferences.remove(("musicName" + String(numMusic - 1)).c_str());
             preferences.remove(("musicId" + String(numMusic - 1)).c_str());
             preferences.putInt("numMusic", numMusic - 1);
-            // u8g2.setCursor(0, 11 + 12);
-            // u8g2.print("音乐删除成功！");
             Serial.println("Success Delete Music!");
 
             request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Music Configuration</title></head><body><h1>Music Deleted!</h1><p>The music has been deleted.</p><p><a href='/'>Go Back</a></p></body></html>");
@@ -1931,8 +1821,6 @@ void handleDeleteMusic(AsyncWebServerRequest *request)
             return;
         }
     }
-    // u8g2.setCursor(0, 11 + 12);
-    // u8g2.print("该音乐不存在！");
     Serial.println("Fail to Delete Music!");
 
     request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Music Configuration</title></head><body><h1>Music Not Found!</h1><p>The specified music was not found.</p><p><a href='/'>Go Back</a></p></body></html>");
@@ -1958,3 +1846,22 @@ void handleListMusic(AsyncWebServerRequest *request)
     request->send(200, "text/html", html);
     preferences.end();
 }
+
+
+String generateRandomString(size_t length) {  
+    const std::string chars =   
+        "0123456789"  
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"  
+        "abcdefghijklmnopqrstuvwxyz";  
+      
+    std::random_device rd;  // 用于获取随机数种子  
+    std::mt19937 gen(rd()); // 以随机设备为种子初始化Mersenne Twister伪随机数生成器  
+    std::uniform_int_distribution<> dis(0, chars.size() - 1); // 定义分布范围  
+  
+    // std::string str(length, ' ');  
+    String str = "";
+    for (size_t i = 0; i < length; ++i) {  
+        str += chars[dis(gen)]; // 生成随机字符并添加到字符串中  
+    }  
+    return str;  
+} 

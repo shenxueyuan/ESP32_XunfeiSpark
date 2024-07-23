@@ -124,7 +124,7 @@ public:
     ~Audio2();
     void setBufsize(int rambuf_sz, int psrambuf_sz);
     bool connecttohost(const char *host, const char *user = "", const char *pwd = "");
-    bool connecttospeech(const char *speech, const char *lang, const char *per, const char *tok);
+    bool connecttospeech(const char *speech, const char *lang, const char *per, const char *tok,const char * cuid);
     bool connecttoFS(fs::FS &fs, const char *path, int32_t resumeFilePos = -1);
     bool connecttoSD(const char *path, int32_t resumeFilePos = -1);
     bool setFileLoop(bool input); // TEST loop
@@ -594,8 +594,8 @@ private:
     uint32_t m_metacount = 0;     // counts down bytes between metadata
     int m_controlCounter = 0;     // Status within readID3data() and readWaveHeader()
     int8_t m_balance = 0;         // -16 (mute left) ... +16 (mute right)
-    uint16_t m_vol = 21;          // volume
-    uint8_t m_vol_steps = 21;     // default
+    uint16_t m_vol = 50;          // volume
+    uint8_t m_vol_steps = 100;     // default
     double m_limit_left = 0;      // limiter 0 ... 1, left channel
     double m_limit_right = 0;     // limiter 0 ... 1, right channel
     uint8_t m_curve = 0;          // volume characteristic
