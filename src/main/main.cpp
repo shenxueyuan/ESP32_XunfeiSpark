@@ -270,13 +270,6 @@ void onMessageCallbackAI(WebsocketsMessage message)
                         Serial.print("speech-line224");
                         Answer = Answer.substring(lastChineseSentenceIndex + 2);
                     }
-                    // else
-                    // {
-                    //     String answer = Answer.substring(0, textLimit);
-                    //     connecttospeech(answer.c_str());
-                    //     Serial.print("speech-line230");
-                    //     Answer = Answer.substring(textLimit + 1);
-                    // }
                 }
                 startPlay = true;
                 conflag = 1;
@@ -421,21 +414,19 @@ void segmentAnswer(){
 
     while(lastPeriodIndex != -1 ){
         answer = Answer.substring(0, lastPeriodIndex + 1);
-        Serial.print("answer-start:");
-        Serial.println(answer);
         subAnswers.push_back(answer.c_str());
         Answer = Answer.substring(lastPeriodIndex + 2);
         lastPeriodIndex = Answer.indexOf("。");
+        startPlay = true;
     }
  
     int secondIndex = Answer.indexOf("，");
     while(secondIndex != -1 ){
         answer = Answer.substring(0, secondIndex + 1);
-        Serial.print("answer-start:");
-        Serial.println(answer);
         subAnswers.push_back(answer.c_str());
         Answer = Answer.substring(secondIndex + 2);
         secondIndex = Answer.indexOf("，");
+        startPlay = true;
     }
  
     answer = Answer.substring(0, Answer.length());
@@ -443,58 +434,7 @@ void segmentAnswer(){
         subAnswers.push_back(answer.c_str());
         startPlay = true;
     }
-    startPlay = true;
     Answer = "";
-
-    // if (secondIndex != -1){
-    //     answer = Answer.substring(0, secondIndex + 1);
-    //     Serial.print("answer-middle:");
-    //     Serial.println(answer);
-    //     subAnswers.push_back(answer.c_str());
-    //     Answer = Answer.substring(secondIndex + 2);
-    // }
-
-    // if(lastPeriodIndex == -1 && secondIndex == -1 ){
-    //     answer = Answer.substring(0, Answer.length());
-    //     Serial.print("answer-end:");
-    //     Serial.println(answer);
-    //     if(answer.length() >= 5){
-    //         subAnswers.push_back(answer.c_str());
-    //         startPlay = true;
-    //     }
-    //     Answer = "";
-    // }else{
-    //     startPlay = true;
-    //     segmentAnswer();
-    // }
-
-    // const char *chinesePunctuation = "。，！？：；,.";
-
-    // int lastChineseSentenceIndex = -1;
-
-    // for (int i = 0; i < Answer.length(); ++i){
-    //     char currentChar = Answer.charAt(i);
-    //     if (strchr(chinesePunctuation, currentChar) != NULL){
-    //         lastChineseSentenceIndex = i;
-    //     }
-    // }
-    // if (lastChineseSentenceIndex != -1){
-    //     answer = Answer.substring(0, lastChineseSentenceIndex + 1);
-    //     if(answer.length() >= 5){
-    //         subAnswers.push_back(answer.c_str());
-    //         startPlay = true;
-    //     }
-    //     Answer = Answer.substring(lastChineseSentenceIndex + 2);
-    //     segmentAnswer();
-    // }else{
-        // answer = Answer.substring(0, Answer.length());
-        // if(answer.length() >= 5){
-        //     subAnswers.push_back(answer.c_str());
-        //     startPlay = true;
-        // }
-        // Answer = "";
-    // }
-    
 }
 
 // 将接收到的语音转成文本
@@ -589,7 +529,12 @@ void onMessageCallbackASR(WebsocketsMessage message)
                     }else if(llmType ==2){
                         // 发送给 通义千问大模型
                         Answer = sendMsgToQwenAILLM(askquestion);
-                        Answer +="回答完毕。";
+                        if(Answer.endsWith("。")){
+                            Answer = Answer.substring(0,Answer.length()-1);
+                            Answer +="，回答完毕。";
+                        }else{
+                            Answer +="回答完毕。";
+                        }
                         segmentAnswer();
                     }
                 }
@@ -989,7 +934,7 @@ void ConnServerASR()
     stt_connect_time = esp_timer_get_time();
     Serial.print("Time since STT connectio-startn: ");
     Serial.println(stt_connect_time);
-    
+
     // Serial.println("urlASR:" + urlASR);
     webSocketClientASR.onMessage(onMessageCallbackASR);
     webSocketClientASR.onEvent(onEventsCallbackASR);
@@ -1015,6 +960,8 @@ void voicePlay()
             connecttospeech(subAnswers[subindex].c_str());
             subindex++;
             conflag = 1;
+            // 设置开始播放标志
+            startPlay = true;
         }
         else
         {
@@ -1023,8 +970,6 @@ void voicePlay()
             startPlay = false;
             conflag = 1;
         }
-        // 设置开始播放标志
-        startPlay = true;
     }
     else
     {
@@ -1547,7 +1492,7 @@ float calculateRMS(uint8_t *buffer, int bufferSize)
 // 处理根路径的请求
 void handleRoot(AsyncWebServerRequest *request)
 {
-    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Configuration</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } a { display: inline-block; padding: 10px 20px; margin: 10px; border: none; background-color: #333; color: white; text-decoration: none; cursor: pointer; } a:hover { background-color: #555; }</style></head><body><h1>ESP32 Configuration</h1><a href='/wifi'>Wi-Fi Management</a><a href='/music'>Music Management</a></body></html>";
+    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>AI 智能对话 后台系统</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } a { display: inline-block; padding: 10px 20px; margin: 10px; border: none; background-color: #333; color: white; text-decoration: none; cursor: pointer; } a:hover { background-color: #555; }</style></head><body><h1>ESP32 Configuration</h1><a href='/wifi'>Wi-Fi Management</a><a href='/music'>Music Management</a></body></html>";
     request->send(200, "text/html", html);
 }
 
