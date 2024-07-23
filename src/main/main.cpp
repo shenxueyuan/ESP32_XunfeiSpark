@@ -630,9 +630,10 @@ int dealCommand(){
             setVolume();
             askquestion = "音量调到最大了，注意保护耳朵哦";
         }else if(volume < 100){
-            volume = volume + 30;
-            if(volume > 100){
-                volume = 100;
+            if(volume >= 30){
+                volume = volume + 30;
+            }else{
+                volume = volume + 10;
             }
             setVolume();
             askquestion = "已为你增大音量";
@@ -648,11 +649,17 @@ int dealCommand(){
     else if (askquestion.indexOf("小") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
     {   
         if(askquestion.indexOf("最小") >-1){
-            volume = 5;
+            volume = 10;
             setVolume();
             askquestion = "音量减到最小，注意仔细听哦";   
         }else if(volume > 10){
-            volume = volume - 30;
+            if(volume <= 30){
+                volume = volume - 10;
+            }else if(volume <= 50){
+                volume = volume - 20;
+            }else if(volume <= 100){
+                volume = volume - 30;
+            }
             if(volume < 10){
                 volume = 10;
             }
