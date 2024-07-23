@@ -64,8 +64,8 @@ int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
 int volume = 50;// 音量大小
-int textLimit=120; // 超过多长 要分割，立马播放
-int llmType = 2; // 1:讯飞AI 2:通义千问
+int textLimit=100; // 超过多长 要分割，立马播放
+int llmType = 1; // 1:讯飞AI 2:通义千问
 HTTPClient https; // 创建一个HTTP客户端对象
 
 hw_timer_t *timer = NULL; // 定义硬件定时器对象
@@ -137,7 +137,7 @@ String text_temp = "";
 
 String welcome = "小朋友，你好啊，我是大象，快来跟我聊天吧";
 String welcomeATM = "小朋友，你好啊，我是赛文奥特曼，让我们一起来拯救地球吧！";
-String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，并且答案缩减到100字以内;";
+String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，复杂问题答案缩减到100字以内;";
 String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
 String roleContent = roleDaxiang;
 
@@ -250,7 +250,7 @@ void onMessageCallbackAI(WebsocketsMessage message)
                 }
                 else
                 {
-                    const char *chinesePunctuation = "？，！：；,.";
+                    const char *chinesePunctuation = "[.,;!?()<>‘。、，；！？《》（）“”‘’]";
 
                     int lastChineseSentenceIndex = -1;
 
@@ -270,13 +270,13 @@ void onMessageCallbackAI(WebsocketsMessage message)
                         Serial.print("speech-line224");
                         Answer = Answer.substring(lastChineseSentenceIndex + 2);
                     }
-                    else
-                    {
-                        String answer = Answer.substring(0, textLimit);
-                        connecttospeech(answer.c_str());
-                        Serial.print("speech-line230");
-                        Answer = Answer.substring(textLimit + 1);
-                    }
+                    // else
+                    // {
+                    //     String answer = Answer.substring(0, textLimit);
+                    //     connecttospeech(answer.c_str());
+                    //     Serial.print("speech-line230");
+                    //     Answer = Answer.substring(textLimit + 1);
+                    // }
                 }
                 startPlay = true;
                 conflag = 1;
@@ -299,6 +299,7 @@ void onMessageCallbackAI(WebsocketsMessage message)
 
 // 统一调用百度TTS
 void connecttospeech(String content){
+    delay(200);
     audioTTS.connecttospeech(content.c_str(), "zh",per.c_str(),accessToken.c_str());
 }
 
@@ -527,7 +528,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
             // 如果问句为空，播放错误提示语音
             if (askquestion == "")
             {
-                askquestion = "未听到说话，本轮应答结束，请开启下一轮问答。";
+                askquestion = "我先退下了，有需要再叫唤醒我吧。";
                 connecttospeech(askquestion.c_str());
             }
             else
@@ -795,7 +796,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
 
             if(null_voice >= 80)
             {
-                connecttospeech("未听到说话，本轮应答结束，请开启下一轮问答。");
+                connecttospeech("我先退下了，有需要再叫我吧。");
                 webSocketClientASR.close();
                 return;
             }
@@ -856,7 +857,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
                 business["domain"] = "iat";
                 business["language"] = "zh_cn";
                 business["accent"] = "mandarin";
-                // 不使用动态修正
+                // // 不使用动态修正
                 business["vinfo"] = 1;
                 // 使用动态修正
                 // business["dwa"] = "wpgs";
@@ -961,7 +962,6 @@ void voicePlay()
     {
         if (subindex < subAnswers.size())
         {
-            delay(200);
             connecttospeech(subAnswers[subindex].c_str());
             subindex++;
             conflag = 1;
