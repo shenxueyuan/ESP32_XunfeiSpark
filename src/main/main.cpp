@@ -180,8 +180,6 @@ using namespace websockets; // 使用WebSocket命名空间
 WebsocketsClient webSocketClientAI;
 WebsocketsClient webSocketClientASR;
 
-WebsocketsClient webSocketClientAliASR;
-
 int loopcount = 0; // 循环计数器
 int flag = 0;       // 用来确保subAnswer1一定是大模型回答最开始的内容
 int conflag = 0;
@@ -471,39 +469,6 @@ void segmentAnswer(){
         startPlay = true;
     }
     Answer = "";
-}
-
-
-void onMessageCallbackAliASR(WebsocketsMessage message){
-
-
-    Serial.println("ali-asr-message-回调：");
-
-    // 创建一个静态JSON文档对象，用于存储解析后的JSON数据，最大容量为4096字节
-    StaticJsonDocument<2048> jsonDocument;
-
-    // 解析收到的JSON数据
-    DeserializationError error = deserializeJson(jsonDocument, message.data());
-
-    if (error)
-    {
-        // 如果解析出错，输出错误信息和收到的消息数据
-        Serial.println("error:");
-        Serial.println(error.c_str());
-        Serial.println(message.data());
-        return;
-    }
-
-     // 从JSON数据中获取返回码
-    int code = jsonDocument["code"];
-    Serial.println("code:");
-    Serial.println(code);
-
-
-        // 输出收到的讯飞云返回消息
-    Serial.println("ali-asr return message:");
-    Serial.println(message.data());
-
 }
 
 // 将接收到的语音转成文本
@@ -806,140 +771,6 @@ int dealCommand(){
     return flag;
 }
 
-void sendVoiceDataToAli(){
-     // 向串口输出提示信息
-    Serial.println("Send message to ali-asr");
-
-    // 初始化变量
-    int silence = 0;
-    int firstframe = 1;
-    int j = 0;
-    int voicebegin = 0;
-    int voice = 0;
-    int null_voice = 0;
-
-    // 创建一个JSON文档对象
-    StaticJsonDocument<2000> doc;
-    // String messageId = generateRandomString(32);
-    // 创建data对象            
-    JsonObject header = doc.createNestedObject("header");
-    JsonObject payload = doc.createNestedObject("payload");
-
-    header["appkey"] = qwenApiKey;
-    header["message_id"] = deviceToken;
-    header["task_id"] = deviceToken;
-    header["namespace"] = "SpeechTranscriber";
-    header["name"] = "StartTranscription";
-    
-    
-    // 无限循环，用于录制和发送音频数据
-    while (1)
-    {
-        // 清空JSON文档
-        // doc.clear();
-
-        payload.clear();
-
-        // 录制音频数据
-        audioRecord.Record();
-        // 计算音频数据的RMS值
-        float rms = calculateRMS((uint8_t *)audioRecord.wavData[0], 1280);
-        printf("%d %f\n", 0, rms);
-
-        if(null_voice >= 80)
-        {
-            connecttospeech("没事的话，我先退下了，有需要再唤醒我吧。");
-            webSocketClientAliASR.close();
-            return;
-        }
-        
-        // 判断是否为噪音
-        if (rms < noise)
-        {
-            null_voice ++;
-            if (voicebegin == 1)
-            {
-                silence++;
-            }
-        }
-        else
-        {
-            voice++;
-            if (voice >= 5)
-            {
-                voicebegin = 1;
-            }
-            else
-            {
-                voicebegin = 0;
-            }
-            silence = 0;
-        }
-
-        
-        if (firstframe == 1){
-            // 处理第一帧音频数据
-            payload["format"] = "wav";
-            payload["sample_rate"] = 8000;
-            payload["enable_intermediate_result"] = false;// 是否返回中间识别结果，默认是false。
-            payload["enable_punctuation_prediction"] = true;// 是否在后处理中添加标点，默认是false。
-            payload["enable_inverse_text_normalization"] = true;// ITN（逆文本inverse text normalization）中文数字转换阿拉伯数字。设置为True时，中文数字将转为阿拉伯数字输出，默认值：False。
-
-            String jsonString;
-            serializeJson(doc, jsonString);
-            webSocketClientAliASR.send(jsonString);
-
-            Serial.print("发送第一帧数据：");Serial.println(jsonString);
-        }
-        else if (silence == 8) {
-            // 如果静音达到8个周期，发送结束标志的音频数据，Payload为空
-            header["name"] = "StopTranscription";
-
-            String jsonString;
-            serializeJson(doc, jsonString);
-
-            webSocketClientAliASR.sendBinary(jsonString);
-            Serial.print("发送结束数据：");
-            Serial.println(jsonString);
-            return;
-        }else{
-            // 发送音频数据
-            // webSocketClientAliASR.streamBinary((byte *)audioRecord.wavData[0]);
-        }
-        
-        j++;
-        firstframe = 0;
-        delay(40);
-    }
-}
-// 录音
-void onEventsCallbackAliASR(WebsocketsEvent event, String data)
-{
-    // 当WebSocket连接打开时触发
-    if (event == WebsocketsEvent::ConnectionOpened)
-    {
-        
-    }
-    // 当WebSocket连接关闭时触发
-    else if (event == WebsocketsEvent::ConnectionClosed)
-    {
-        // 向串口输出提示信息
-        Serial.println("Connnection-ali-ASR Closed");
-    }
-    // 当收到Ping消息时触发
-    else if (event == WebsocketsEvent::GotPing)
-    {
-        // 向串口输出提示信息
-        Serial.println("Got a Ping!");
-    }
-    // 当收到Pong消息时触发
-    else if (event == WebsocketsEvent::GotPong)
-    {
-        // 向串口输出提示信息
-        Serial.println("Got a Pong!");
-    }
-}
-
 // 录音
 void onEventsCallbackASR(WebsocketsEvent event, String data)
 {
@@ -1013,7 +844,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             if (silence == 8)
             {
                 data["status"] = 2;
-                data["format"] = "audio/L16;rate=8000";
+                data["format"] = "audio/L16;rate=16000";
                 data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
                 data["encoding"] = "raw";
                 j++;
@@ -1030,7 +861,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             if (firstframe == 1)
             {
                 data["status"] = 0;
-                data["format"] = "audio/L16;rate=8000";
+                data["format"] = "audio/L16;rate=16000";
                 data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
                 data["encoding"] = "raw";
                 j++;
@@ -1059,7 +890,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             {
                 // 处理后续帧音频数据
                 data["status"] = 1;
-                data["format"] = "audio/L16;rate=8000";
+                data["format"] = "audio/L16;rate=16000";
                 data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
                 data["encoding"] = "raw";
 
@@ -1118,25 +949,7 @@ void ConnServerAI()
     }
     
 }
-
-void ConnServerAliASR()
-{
-    webSocketClientAliASR.onMessage(onMessageCallbackAliASR);
-    webSocketClientAliASR.onEvent(onEventsCallbackAliASR);
-    
-    // Connect to WebSocket
-    Serial.println("Begin connect to server-ali-asr......");
-    if (webSocketClientAliASR.connect(aliAsrURL.c_str()))
-    {
-        Serial.println("Connected to server-ali-asr!");
-        sendVoiceDataToAli();
-    }
-    else
-    {
-        Serial.println("Failed to connect to server-ali-asr!");
-    }
-}
-
+ 
 void ConnServerASR()
 {
     stt_connect_time = esp_timer_get_time();
