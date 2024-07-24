@@ -11,6 +11,22 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <Preferences.h>
+#include <DNSServer.h>
+class CaptiveRequestHandler : public AsyncWebHandler {
+public:
+  CaptiveRequestHandler() {}
+  virtual ~CaptiveRequestHandler() {}
+
+  bool canHandle(AsyncWebServerRequest *request){
+    //request->addInterestingHeader("ANY");
+    return true;
+  }
+
+  void handleRequest(AsyncWebServerRequest *request) {
+    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>AI 智能对话 后台系统</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } a { display: inline-block; padding: 10px 20px; margin: 10px; border: none; background-color: #333; color: white; text-decoration: none; cursor: pointer; } a:hover { background-color: #555; }</style></head><body><h1>AI-Chat Configuration</h1><a href='/wifi'>Wi-Fi Management</a><a href='/music'>Music Management</a></body></html>";
+    request->send(200, "text/html", html);
+  }
+};
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
@@ -37,6 +53,7 @@ const char *ap_password = "12345678";
 // Web服务器和Preferences对象
 AsyncWebServer server(80);
 Preferences preferences;
+DNSServer dnsServer;
 
 // 星火大模型的账号参数
 String APPID = "e7df2284";                             // 星火大模型的App ID
@@ -51,7 +68,7 @@ String qwenApiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-ge
 String baiduApiUrl = "https://aip.baidubce.com/oauth/2.0/token?client_id=YcYPjhxw0V7wzhcu07xnLbU5&client_secret=ANDLajJTKt4juGarl8cME1BS3aXmRMdV&grant_type=client_credentials";
 
 // 阿里 websocket
-String aliAsrURL = "wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1?token=56819863854c40bd8e82e560ceefd8fb";
+String aliAsrURL = "ws://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1?token=025554a2d70e4a389cfa317838ac24a4";
 
 String answerHello = "嗯，收到。";
 String answerHello2 = "收到。";
@@ -75,11 +92,14 @@ int textLimit=100; // 超过多长 要分割，立马播放
 int llmType = 2; // 1:讯飞AI 2:通义千问
 HTTPClient https; // 创建一个HTTP客户端对象
 
+int wifiStatus = 0;// 网络热点开关 1：打开 0：关闭
+
 hw_timer_t *timer = NULL; // 定义硬件定时器对象
 
 uint8_t adc_start_flag = 0;
 uint8_t adc_complete_flag = 0;
 uint32_t stt_connect_time = 0;
+
 
 
 // 创建音频对象
@@ -115,13 +135,14 @@ void ConnServerASR();
 void ConnServerAliASR();
 
 
+void startWIfiAP(bool isOpen);
+
+int dealCommand();
+void getBaiduAccessToken();
 void connecttospeech(String content);
 void sendMsgToQwenAILLM(String queston);
-void getBaiduAccessToken();
 void segmentAnswer();
-int dealCommand();
 void sendMsgToXunfeiAILLM();
-void startWIfiAP(bool isOpen);
 
 // 创建动态JSON文档对象和数组
 std::vector<String> text;
@@ -455,6 +476,9 @@ void segmentAnswer(){
 
 void onMessageCallbackAliASR(WebsocketsMessage message){
 
+
+    Serial.println("ali-asr-message-回调：");
+
     // 创建一个静态JSON文档对象，用于存储解析后的JSON数据，最大容量为4096字节
     StaticJsonDocument<2048> jsonDocument;
 
@@ -474,6 +498,11 @@ void onMessageCallbackAliASR(WebsocketsMessage message){
     int code = jsonDocument["code"];
     Serial.println("code:");
     Serial.println(code);
+
+
+        // 输出收到的讯飞云返回消息
+    Serial.println("ali-asr return message:");
+    Serial.println(message.data());
 
 }
 
@@ -777,117 +806,125 @@ int dealCommand(){
     return flag;
 }
 
+void sendVoiceDataToAli(){
+     // 向串口输出提示信息
+    Serial.println("Send message to ali-asr");
+
+    // 初始化变量
+    int silence = 0;
+    int firstframe = 1;
+    int j = 0;
+    int voicebegin = 0;
+    int voice = 0;
+    int null_voice = 0;
+
+    // 创建一个JSON文档对象
+    StaticJsonDocument<2000> doc;
+    // String messageId = generateRandomString(32);
+    // 创建data对象            
+    JsonObject header = doc.createNestedObject("header");
+    JsonObject payload = doc.createNestedObject("payload");
+
+    header["appkey"] = qwenApiKey;
+    header["message_id"] = deviceToken;
+    header["task_id"] = deviceToken;
+    header["namespace"] = "SpeechTranscriber";
+    header["name"] = "StartTranscription";
+    
+    
+    // 无限循环，用于录制和发送音频数据
+    while (1)
+    {
+        // 清空JSON文档
+        // doc.clear();
+
+        payload.clear();
+
+        // 录制音频数据
+        audioRecord.Record();
+        // 计算音频数据的RMS值
+        float rms = calculateRMS((uint8_t *)audioRecord.wavData[0], 1280);
+        printf("%d %f\n", 0, rms);
+
+        if(null_voice >= 80)
+        {
+            connecttospeech("没事的话，我先退下了，有需要再唤醒我吧。");
+            webSocketClientAliASR.close();
+            return;
+        }
+        
+        // 判断是否为噪音
+        if (rms < noise)
+        {
+            null_voice ++;
+            if (voicebegin == 1)
+            {
+                silence++;
+            }
+        }
+        else
+        {
+            voice++;
+            if (voice >= 5)
+            {
+                voicebegin = 1;
+            }
+            else
+            {
+                voicebegin = 0;
+            }
+            silence = 0;
+        }
+
+        
+        if (firstframe == 1){
+            // 处理第一帧音频数据
+            payload["format"] = "wav";
+            payload["sample_rate"] = 8000;
+            payload["enable_intermediate_result"] = false;// 是否返回中间识别结果，默认是false。
+            payload["enable_punctuation_prediction"] = true;// 是否在后处理中添加标点，默认是false。
+            payload["enable_inverse_text_normalization"] = true;// ITN（逆文本inverse text normalization）中文数字转换阿拉伯数字。设置为True时，中文数字将转为阿拉伯数字输出，默认值：False。
+
+            String jsonString;
+            serializeJson(doc, jsonString);
+            webSocketClientAliASR.send(jsonString);
+
+            Serial.print("发送第一帧数据：");Serial.println(jsonString);
+        }
+        else if (silence == 8) {
+            // 如果静音达到8个周期，发送结束标志的音频数据，Payload为空
+            header["name"] = "StopTranscription";
+
+            String jsonString;
+            serializeJson(doc, jsonString);
+
+            webSocketClientAliASR.sendBinary(jsonString);
+            Serial.print("发送结束数据：");
+            Serial.println(jsonString);
+            return;
+        }else{
+            // 发送音频数据
+            // webSocketClientAliASR.streamBinary((byte *)audioRecord.wavData[0]);
+        }
+        
+        j++;
+        firstframe = 0;
+        delay(40);
+    }
+}
 // 录音
 void onEventsCallbackAliASR(WebsocketsEvent event, String data)
 {
     // 当WebSocket连接打开时触发
     if (event == WebsocketsEvent::ConnectionOpened)
     {
-        // 向串口输出提示信息
-        Serial.println("Send message to ali");
-
-        // 初始化变量
-        int silence = 0;
-        int firstframe = 1;
-        int j = 0;
-        int voicebegin = 0;
-        int voice = 0;
-        int null_voice = 0;
-
-        // 创建一个JSON文档对象
-        StaticJsonDocument<2000> doc;
-
-        // 无限循环，用于录制和发送音频数据
-        while (1)
-        {
-            // 清空JSON文档
-            doc.clear();
-
-            // 创建data对象
-            
-            JsonObject header = doc.createNestedObject("header");
-
-            JsonObject payload = doc.createNestedObject("payload");
-
-            // 录制音频数据
-            audioRecord.Record();
-
-            // 计算音频数据的RMS值
-            float rms = calculateRMS((uint8_t *)audioRecord.wavData[0], 1280);
-            printf("%d %f\n", 0, rms);
-
-            if(null_voice >= 80)
-            {
-                connecttospeech("未听到说话，本轮应答结束，请开启下一轮问答。");
-                webSocketClientAliASR.close();
-                return;
-            }
-
-            // 判断是否为噪音
-            if (rms < noise)
-            {
-                null_voice ++;
-                if (voicebegin == 1)
-                {
-                    silence++;
-                }
-            }
-            else
-            {
-                voice++;
-                if (voice >= 5)
-                {
-                    voicebegin = 1;
-                }
-                else
-                {
-                    voicebegin = 0;
-                }
-                silence = 0;
-            }
-
-            header["appkey"] = qwenApiKey;
-            header["message_id"] = generateRandomString(32);
-            header["task_id"] = deviceToken;
-            header["namespace"] = "SpeechTranscriber";
-            header["name"] = "StartTranscription";
-
-            // 如果静音达到8个周期，发送结束标志的音频数据，Payload为空
-            if (silence == 8) {
-                header["name"] = "StopTranscription";
-            }
-              // 处理第一帧音频数据
-            if (firstframe == 1)
-            {
-
-            }
-            else{
-                // 发送音频数据
-                payload["format"] = "wav";
-                payload["sample_rate"] = 8000;
-                
-                webSocketClientAliASR.sendBinary(base64::encode((byte *)audioRecord.wavData[0], 1280));
-            }
-            
-
-           
-            j++;
-
-
-            String jsonString;
-            serializeJson(doc, jsonString);
-
-            webSocketClientAliASR.send(jsonString);
-            firstframe = 0;
-            delay(40);
-            
-        }
+        
     }
     // 当WebSocket连接关闭时触发
     else if (event == WebsocketsEvent::ConnectionClosed)
     {
         // 向串口输出提示信息
-        Serial.println("Connnection-ASR Closed");
+        Serial.println("Connnection-ali-ASR Closed");
     }
     // 当收到Ping消息时触发
     else if (event == WebsocketsEvent::GotPing)
@@ -1082,7 +1119,8 @@ void ConnServerAI()
     
 }
 
-void connServerAliASR(){
+void ConnServerAliASR()
+{
     webSocketClientAliASR.onMessage(onMessageCallbackAliASR);
     webSocketClientAliASR.onEvent(onEventsCallbackAliASR);
     
@@ -1091,12 +1129,12 @@ void connServerAliASR(){
     if (webSocketClientAliASR.connect(aliAsrURL.c_str()))
     {
         Serial.println("Connected to server-ali-asr!");
+        sendVoiceDataToAli();
     }
     else
     {
         Serial.println("Failed to connect to server-ali-asr!");
     }
-
 }
 
 void ConnServerASR()
@@ -1409,6 +1447,7 @@ void setVolume()
 void startWIfiAP(bool isOpen)
 {
     if(isOpen){
+        wifiStatus = 1;// 打开网络
         // 启动 AP 模式创建热点
         WiFi.softAP(ap_ssid, ap_password);
         Serial.println("Started Access Point");
@@ -1422,9 +1461,13 @@ void startWIfiAP(bool isOpen)
         server.on("/saveMusic", HTTP_POST, handleSaveMusic);
         server.on("/deleteMusic", HTTP_POST, handleDeleteMusic);
         server.on("/listMusic", HTTP_GET, handleListMusic);
+
+        dnsServer.start(53, "*", WiFi.softAPIP());
+        server.addHandler(new CaptiveRequestHandler()).setFilter(ON_AP_FILTER);//only when requested from AP
         server.begin();
         Serial.println("WebServer started, waiting for configuration...");
     }else{
+        wifiStatus = 0;// 关闭网络
         WiFi.softAPdisconnect(true);
     }
 }
@@ -1479,6 +1522,10 @@ void loop()
         Serial.println("开启连续对话...");
         clickAndStart();
     }
+
+    if(wifiStatus == 1){
+        dnsServer.processNextRequest();   
+    }
 }
 
 void clickAndStart()
@@ -1513,6 +1560,8 @@ void clickAndStart()
 
     // 连接到WebSocket服务器-语音识别
     ConnServerASR();
+
+    // ConnServerAliASR();
     
     adc_complete_flag = 0;
 }
@@ -1645,7 +1694,7 @@ float calculateRMS(uint8_t *buffer, int bufferSize)
 // 处理根路径的请求
 void handleRoot(AsyncWebServerRequest *request)
 {
-    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>AI 智能对话 后台系统</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } a { display: inline-block; padding: 10px 20px; margin: 10px; border: none; background-color: #333; color: white; text-decoration: none; cursor: pointer; } a:hover { background-color: #555; }</style></head><body><h1>ESP32 Configuration</h1><a href='/wifi'>Wi-Fi Management</a><a href='/music'>Music Management</a></body></html>";
+    String html = "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>AI 智能对话 后台系统</title><style>body { font-family: Arial, sans-serif; text-align: center; background-color: #f0f0f0; } h1 { color: #333; } a { display: inline-block; padding: 10px 20px; margin: 10px; border: none; background-color: #333; color: white; text-decoration: none; cursor: pointer; } a:hover { background-color: #555; }</style></head><body><h1>AI-Chat Configuration</h1><a href='/wifi'>Wi-Fi Management</a><a href='/music'>Music Management</a></body></html>";
     request->send(200, "text/html", html);
 }
 
