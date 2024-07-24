@@ -675,7 +675,7 @@ int dealCommand(){
         }else if(volume > 10){
             if(volume <= 50){
                 volume = volume - 10;
-            }else if(volume <= 80){
+            }else{
                 volume = volume - 20;
             }
             if(volume < 30){

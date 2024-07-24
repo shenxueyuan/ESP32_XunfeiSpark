@@ -1,8 +1,9 @@
 #include "I2S.h"
 #define SAMPLE_RATE (8000)
-#define PIN_I2S_BCLK 4
-#define PIN_I2S_LRC 15
-#define PIN_I2S_DIN 22
+#define PIN_I2S_BCLK_SCK 19 // SCK
+#define PIN_I2S_LRC_WS 21 // WS 
+#define PIN_I2S_DIN_SD 18 // SD 
+
 // #define PIN_I2S_DOUT 25
 
 const i2s_port_t I2S_PORT = I2S_NUM_0;
@@ -28,10 +29,10 @@ I2S::I2S()
       .dma_buf_count = 16,
       .dma_buf_len = 60};
   i2s_pin_config_t pin_config;
-  pin_config.bck_io_num = PIN_I2S_BCLK;
-  pin_config.ws_io_num = PIN_I2S_LRC;
+  pin_config.bck_io_num = PIN_I2S_BCLK_SCK;
+  pin_config.ws_io_num = PIN_I2S_LRC_WS;
   pin_config.data_out_num = I2S_PIN_NO_CHANGE;
-  pin_config.data_in_num = PIN_I2S_DIN;
+  pin_config.data_in_num = PIN_I2S_DIN_SD;
   pin_config.mck_io_num = GPIO_NUM_0; // Set MCLK to GPIO0
   i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
   i2s_set_pin(I2S_NUM_0, &pin_config);
