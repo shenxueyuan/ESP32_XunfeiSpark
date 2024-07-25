@@ -165,8 +165,8 @@ String text_temp = "";
 
 String welcome = "小朋友，你好啊，我是大象，快来跟我聊天吧";
 String welcomeATM = "小朋友，你好啊，我是赛文奥特曼，让我们一起来拯救地球吧！";
-String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，答案缩减到100字以内;";
-String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
+String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，答案缩减到50字以内;";
+String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到50字以内;";
 String roleContent = roleDaxiang;
 
 // 星火大模型参数
@@ -444,30 +444,38 @@ void segmentAnswer(){
     if(Answer == ""){
         return;
     }
-    int lastPeriodIndex = Answer.indexOf("。");
 
-    while(lastPeriodIndex != -1 ){
-        answer = Answer.substring(0, lastPeriodIndex + 1);
-        subAnswers.push_back(answer.c_str());
-        Answer = Answer.substring(lastPeriodIndex + 2);
-        lastPeriodIndex = Answer.indexOf("。");
-        startPlay = true;
-    }
+
+    subAnswers.push_back(Answer.c_str());
+    startPlay = true;
+    
+    // ↓把回答文字缩短，这里不拆了。不然 播放语音有明显的断句。影响体验。↓
+
+
+    // int lastPeriodIndex = Answer.indexOf("。");
+
+    // while(lastPeriodIndex != -1 ){
+    //     answer = Answer.substring(0, lastPeriodIndex + 1);
+    //     subAnswers.push_back(answer.c_str());
+    //     Answer = Answer.substring(lastPeriodIndex + 2);
+    //     lastPeriodIndex = Answer.indexOf("。");
+    //     startPlay = true;
+    // }
  
-    int secondIndex = Answer.indexOf("，");
-    while(secondIndex != -1 ){
-        answer = Answer.substring(0, secondIndex + 1);
-        subAnswers.push_back(answer.c_str());
-        Answer = Answer.substring(secondIndex + 2);
-        secondIndex = Answer.indexOf("，");
-        startPlay = true;
-    }
+    // int secondIndex = Answer.indexOf("，");
+    // while(secondIndex != -1 ){
+    //     answer = Answer.substring(0, secondIndex + 1);
+    //     subAnswers.push_back(answer.c_str());
+    //     Answer = Answer.substring(secondIndex + 2);
+    //     secondIndex = Answer.indexOf("，");
+    //     startPlay = true;
+    // }
  
-    answer = Answer.substring(0, Answer.length());
-    if(answer.length() >= 5){
-        subAnswers.push_back(answer.c_str());
-        startPlay = true;
-    }
+    // answer = Answer.substring(0, Answer.length());
+    // if(answer.length() >= 5){
+    //     subAnswers.push_back(answer.c_str());
+    //     startPlay = true;
+    // }
     Answer = "";
 }
 
@@ -810,7 +818,8 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             float rms = calculateRMS((uint8_t *)audioRecord.wavData[0], 1280);
             printf("%d %f\n", 0, rms);
 
-            if(null_voice >= 80)
+            // 一直没说话，8秒则结束
+            if(null_voice >= 200)
             {
                 connecttospeech("我先退下了，有需要再叫我吧。");
                 webSocketClientASR.close();
@@ -840,8 +849,8 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
                 silence = 0;
             }
 
-            // 如果静音达到8个周期，发送结束标志的音频数据
-            if (silence == 8)
+            // 如果静音达到10个周期，发送结束标志的音频数据
+            if (silence == 10)
             {
                 data["status"] = 2;
                 data["format"] = "audio/L16;rate=16000";
