@@ -99,7 +99,7 @@ unsigned long pushTime = 0;
 int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
-int volume = 50;// 音量大小
+int volume = 100;// 音量大小
 int textLimit=100; // 超过多长 要分割，立马播放
 int llmType = 2; // 1:讯飞AI 2:通义千问
 HTTPClient https; // 创建一个HTTP客户端对象
@@ -138,6 +138,7 @@ void handleSaveMusic(AsyncWebServerRequest *request);
 void handleDeleteMusic(AsyncWebServerRequest *request);
 void handleListMusic(AsyncWebServerRequest *request);
 String generateRandomString(size_t length);
+void initMusic();
 
 void initVoiceWakeSerial();
 void getVoiceWakeData();
@@ -147,7 +148,6 @@ void checkLen();
 float calculateRMS(uint8_t *buffer, int bufferSize);
 void ConnServerAI();
 void ConnServerASR();
-void ConnServerAliASR();
 
 
 void startWIfiAP(bool isOpen);
@@ -1271,7 +1271,7 @@ void setup()
     getTimeFromServer();
 
     preferences.begin("volume_config");
-    volume = preferences.getInt("volume", 50);
+    volume = preferences.getInt("volume", 100);
     audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
     audioTTS.setVolume(volume);
     Serial.print("初始化-当前音量：");
@@ -1280,6 +1280,8 @@ void setup()
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
 
+    // 初始化音乐
+    initMusic();
     delay(2000);
 
 }
@@ -1287,15 +1289,38 @@ void setup()
 
 
 void pauseVoice(){
+
+    conflag = 0;
+    // 停止播放音频
     audioTTS.isplaying = 0;
     audioTTS.pauseResume();
+    startPlay = false;
+    isReady = false;
+    Answer = "";
+    flag = 0;
+    subindex = 0;
+    subAnswers.clear();
+    adc_start_flag = 1;
+
+    // 如果距离上次时间同步超过4分钟 // 超过4分钟，重新做一次鉴权
+    if (urlTime + 240000 < millis()) {
+        // 更新时间戳
+        urlTime = millis();
+        // 从服务器获取当前时间
+        getTimeFromServer();
+    }
+    askquestion = "";
+    
+    adc_complete_flag = 0;
 }
 
 void setVolume2(int vol){
     if(vol >= 100){
-        askquestion = "声音已跳到最大";
+        askquestion = "音量已调到最大";
+    }else if(vol == 50){
+        askquestion = "音量已调到中等";
     }else if(volume <= 30){
-        askquestion = "声音已调到最小";
+        askquestion = "音量已调到最小";
     }else if(volume > vol){
         askquestion = "已为你减小音量";
     }else{
@@ -1389,16 +1414,6 @@ void loop()
     {
         clickAndStart();
     }
-    // // 外置检测按键是否按下
-    // if (digitalRead(key_speak) == LOW)
-    // {
-    //     delay(40);
-    //     // 避免抖动
-    //     if(digitalRead(key_speak) == LOW){
-    //         delay(200);
-    //         clickAndStart();
-    //     }
-    // }
     // 添加连续对话功能
     if (audioTTS.isplaying == 0 && Answer == "" && subindex == subAnswers.size() && conflag == 1)
     {
@@ -1445,8 +1460,6 @@ void clickAndStart()
 
     // 连接到WebSocket服务器-语音识别
     ConnServerASR();
-
-    // ConnServerAliASR();
     
     adc_complete_flag = 0;
 }
@@ -1689,6 +1702,64 @@ void handleList(AsyncWebServerRequest *request)
     preferences.end();
 }
 
+void initMusic(){
+    // 小星星 1451396976
+    // 拔萝卜 28700292
+    // 摇篮曲 1417892410
+    // 莫扎特 419485659
+    // 小兔子乖乖 566443169
+    // 两只老虎 566443167
+    // 世上只有妈妈好 566443174
+    // 小白兔 1451390672
+    // 生日快乐歌 2082151352
+    // 丢手绢 1451401289
+    // 小燕子 1451401297
+
+    preferences.begin("music_store", false);
+
+    int numMusic = preferences.getInt("numMusic", 0);
+    if(numMusic == 0){
+        numMusic = 11;
+
+        preferences.putString(("musicName" + String(0)).c_str(), "小星星");
+        preferences.putString(("musicId" + String(0)).c_str(), "1451396976");
+
+        preferences.putString(("musicName" + String(1)).c_str(), "拔萝卜");
+        preferences.putString(("musicId" + String(1)).c_str(), "28700292");
+        
+        preferences.putString(("musicName" + String(2)).c_str(), "摇篮曲");
+        preferences.putString(("musicId" + String(2)).c_str(), "1417892410");
+        
+        preferences.putString(("musicName" + String(3)).c_str(), "莫扎特");
+        preferences.putString(("musicId" + String(0)).c_str(), "419485659");
+        
+        preferences.putString(("musicName" + String(4)).c_str(), "小兔子乖乖");
+        preferences.putString(("musicId" + String(4)).c_str(), "566443169");
+        
+        preferences.putString(("musicName" + String(5)).c_str(), "两只老虎");
+        preferences.putString(("musicId" + String(5)).c_str(), "566443167");
+        
+        preferences.putString(("musicName" + String(6)).c_str(), "世上只有妈妈好");
+        preferences.putString(("musicId" + String(6)).c_str(), "566443174");
+        
+        preferences.putString(("musicName" + String(7)).c_str(), "小白兔");
+        preferences.putString(("musicId" + String(7)).c_str(), "1451390672");
+        
+        preferences.putString(("musicName" + String(8)).c_str(), "生日快乐歌");
+        preferences.putString(("musicId" + String(8)).c_str(), "2082151352");
+        
+        preferences.putString(("musicName" + String(9)).c_str(), "丢手绢");
+        preferences.putString(("musicId" + String(9)).c_str(), "1451401289");
+        
+        preferences.putString(("musicName" + String(10)).c_str(), "小燕子");
+        preferences.putString(("musicId" + String(10)).c_str(), "1451401297");
+
+
+        preferences.putInt("numMusic", 11);
+    }
+        preferences.end();
+}
+
 void handleSaveMusic(AsyncWebServerRequest *request)
 {
     Serial.println("Start Save Music!");
@@ -1823,11 +1894,13 @@ void getVoiceWakeData(){
     //发送mqtt
     //收到语音唤醒打开录音
     if(read1 == 1){
-        clickAndStart();
         //打印
         Serial.print("收到内容：");
         Serial.print(read1);Serial.print(" ");
         Serial.print(read2);Serial.println();
+
+        delay(500);
+        clickAndStart();
     }
     else if(read1 == 2){
         // 音量最大
@@ -1864,7 +1937,8 @@ void getVoiceWakeData(){
         Serial.print("收到内容：");
         Serial.print(read1);Serial.print(" ");
         Serial.print(read2);Serial.println();
-    }else if(read1 == 7){
+    }
+    else if(read1 == 7){
         // 暂停播放
         pauseVoice();
         //打印
@@ -1878,17 +1952,31 @@ void getVoiceWakeData(){
         Serial.print("收到内容：");
         Serial.print(read1);Serial.print(" ");
         Serial.print(read2);Serial.println();
-    }else if(read1 == 9){
+    }
+    else if(read1 == 9){
         // 打开网络
         startWIfiAP(true);
+        askquestion = "已为你打开网络";
+        connecttospeech(askquestion);
         //打印
         Serial.print("收到内容：");
         Serial.print(read1);Serial.print(" ");
         Serial.print(read2);Serial.println();
-    }else if(read1 == 10){ 
+    }
+    else if(read1 == 10){ 
         // 关闭网络
         startWIfiAP(false);
+        askquestion = "已为你关闭网络";
+        connecttospeech(askquestion);
         //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }else if(read1 == 11){ 
+        // 退下吧
+        pauseVoice();
+        askquestion = "好的，我先退下了，有需要再唤醒我吧。";
+        connecttospeech(askquestion);
         Serial.print("收到内容：");
         Serial.print(read1);Serial.print(" ");
         Serial.print(read2);Serial.println();
