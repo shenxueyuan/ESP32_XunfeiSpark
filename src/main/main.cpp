@@ -28,6 +28,9 @@ public:
   }
 };
 
+//串口通讯
+#include <SoftwareSerial.h>
+
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 
@@ -44,8 +47,17 @@ using namespace websockets;
 
 // 定义引脚和常量
 #define key_boot 0   // boot按键引脚
-#define key_speak 23 // 外置按键引脚
+// #define key_speak 23 // 外置按键引脚
 #define led 2   //板载led引脚
+
+
+// 定义语音模块的串行通信引脚和速率  
+#define RX_PIN 4 // 假设语音模块的RX连接到ESP的4号引脚  
+#define TX_PIN 5 // 假设语音模块的TX连接到ESP的5号引脚  
+#define BAUD 115200 // 假设语音模块使用115200波特率  
+
+// 初始化软件串行通信 
+SoftwareSerial voiceWakeSerial(RX_PIN, TX_PIN);
 
 // AP 模式的SSID和密码
 const char *ap_ssid = "ESP32-Setup";
@@ -126,6 +138,9 @@ void handleSaveMusic(AsyncWebServerRequest *request);
 void handleDeleteMusic(AsyncWebServerRequest *request);
 void handleListMusic(AsyncWebServerRequest *request);
 String generateRandomString(size_t length);
+
+void initVoiceWakeSerial();
+void getVoiceWakeData();
 
 void getText(String role, String content);
 void checkLen();
@@ -321,6 +336,10 @@ void onMessageCallbackAI(WebsocketsMessage message)
 // 统一调用百度TTS
 void connecttospeech(String content){
     delay(200);
+    // Serial.print("speech-->conent:");Serial.println(content);
+    // Serial.print("speech-->per:");Serial.println(per);
+    // Serial.print("speech-->accesstoken:");Serial.println(accessToken);
+    // Serial.print("speech-->deviceToken:");Serial.println(deviceToken);
     audioTTS.connecttospeech(content.c_str(), "zh",per.c_str(),accessToken.c_str(),deviceToken.c_str());
 }
 
@@ -412,29 +431,30 @@ void sendMsgToQwenAILLM(String inputText)
 
 void getBaiduAccessToken() 
 {
-  HTTPClient http;
-  http.setTimeout(10000);
-  http.begin(baiduApiUrl);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Authorization", String(qwenApiKey));
-  String payload = "";
-  int httpResponseCode = http.POST(payload);
-  if (httpResponseCode == 200) {
-    String response = http.getString();
-    http.end();
-    Serial.print("baidu-token-response:");
-    Serial.println(response);
+    HTTPClient http;
+    http.setTimeout(10000);
+    http.begin(baiduApiUrl);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", String(qwenApiKey));
+    String payload = "";
+    int httpResponseCode = http.POST(payload);
+    if (httpResponseCode == 200) {
+        String response = http.getString();
+        http.end();
+        Serial.print("baidu-token-response:");
+        Serial.println(response);
 
-    // Parse JSON response
-    DynamicJsonDocument jsonDoc(1024);
-    deserializeJson(jsonDoc, response);
-    String access_token =  jsonDoc["access_token"];
-    access_token.replace("-"," - ");
-    preferences.putString("accessToken",access_token);
-  } else {
-    http.end();
-    Serial.printf("百度token %i \n", httpResponseCode);
-  }
+        // Parse JSON response
+        DynamicJsonDocument jsonDoc(1024);
+        deserializeJson(jsonDoc, response);
+        String access_token =  jsonDoc["access_token"];
+        access_token.replace("-"," - ");
+        preferences.putString("accessToken",access_token);
+        accessToken = access_token;
+    } else {
+        http.end();
+        Serial.printf("百度token %i \n", httpResponseCode);
+    }
 }
 
 
@@ -654,9 +674,6 @@ int dealCommand(){
             }else{
                 volume = volume + 20;
             }
-            if(volume > 100){
-                volume = 100;
-            }
             setVolume();
             askquestion = "已为你增大音量";
         }else{
@@ -679,9 +696,6 @@ int dealCommand(){
                 volume = volume - 10;
             }else{
                 volume = volume - 20;
-            }
-            if(volume < 30){
-                volume = 30;
             }
             askquestion = "已为你减小音量";
             setVolume();
@@ -1021,6 +1035,10 @@ int wifiConnect()
 
     int numNetworks = preferences.getInt("numNetworks", 0);
 
+
+    Serial.print("Wifi count: ");
+    Serial.println(numNetworks);
+
     if(numNetworks == 0){
        preferences.end(); 
     }
@@ -1072,14 +1090,14 @@ int wifiConnect()
                 startWIfiAP(false);
 
                 // 启动成功后欢迎语，5118大象
-                if(per.indexOf("5118") > -1){
-                    roleContent = roleDaxiang;
-                    connecttospeech(welcome.c_str());
-                }else if(per.indexOf("5003") > -1){
-                    // 5003 奥特曼
-                    roleContent = roleAoteMan;
-                    connecttospeech(welcomeATM.c_str());
-                }
+                // if(per.indexOf("5118") > -1){
+                //     roleContent = roleDaxiang;
+                //     connecttospeech(welcome.c_str());
+                // }else if(per.indexOf("5003") > -1){
+                //     // 5003 奥特曼
+                //     roleContent = roleAoteMan;
+                //     connecttospeech(welcomeATM.c_str());
+                // }
 
                 // 输出当前空闲堆内存大小
                 Serial.println("Free Heap: " + String(ESP.getFreeHeap()));
@@ -1188,29 +1206,34 @@ void getTimeFromServer()
 
 void addWifi(){
     int numNetworks = preferences.getInt("numNetworks", 0);
-    if(numNetworks<1){
+    if(numNetworks < 1){
         preferences.putString("ssid0", "LEHOO");
         preferences.putString("password0", "Lehoo1688");
         preferences.putInt("numNetworks", 1);
     }
 }
 
+
 void setup()
 {
     // 初始化串口通信，波特率为115200
     Serial.begin(115200);
 
+    // 初始化离线语音唤醒
+    initVoiceWakeSerial();
+
     // 配置引脚模式
     // 配置按键引脚为上拉输入模式，用于boot按键检测
     pinMode(key_boot, INPUT_PULLUP);
     // 外置按钮检测
-    pinMode(key_speak, INPUT_PULLUP);
+    // pinMode(key_speak, INPUT_PULLUP);
     // 将GPIO2设置为输出模式
     pinMode(led, OUTPUT);
 
     // 初始化音频模块audioRecord
     audioRecord.init();
-    
+
+    int result = wifiConnect();
 
     // 初始化 Preferences
     preferences.begin("wifi-config");
@@ -1219,21 +1242,30 @@ void setup()
     
     accessToken = preferences.getString("accessToken");
 
-    deviceToken = preferences.getString("deviceToken");
+    deviceToken = preferences.getString("deviceToken","");
 
     if(deviceToken == ""){
         deviceToken = generateRandomString(32);
         preferences.putString("deviceToken",deviceToken);
-        Serial.print("deviceToken:");
-        Serial.println(deviceToken);
     }
 
+    Serial.print("deviceToken:");
+    Serial.println(deviceToken);
+
+    if(accessToken == ""){
+        getBaiduAccessToken();
+    }
+    // Serial.print("accessToken:");
+    // Serial.println(accessToken);
+
+    preferences.end();
+
     // addWifi();
-    int result = wifiConnect();
     // 如果网络未连接，打开AP网络
     if(result !=1){
         startWIfiAP(true);
     }
+
 
     // 从服务器获取当前时间
     getTimeFromServer();
@@ -1250,12 +1282,41 @@ void setup()
 
     delay(2000);
 
-    // getBaiduAccessToken();
+}
+
+
+
+void pauseVoice(){
+    audioTTS.isplaying = 0;
+    audioTTS.pauseResume();
+}
+
+void setVolume2(int vol){
+    if(vol >= 100){
+        askquestion = "声音已跳到最大";
+    }else if(volume <= 30){
+        askquestion = "声音已调到最小";
+    }else if(volume > vol){
+        askquestion = "已为你减小音量";
+    }else{
+        askquestion = "已为你增大音量";
+    }
+    connecttospeech(askquestion);
+    volume = vol;
+    
+    setVolume();
+    
 }
 
 // 调整音量
 void setVolume()
 {
+    if(volume > 100){
+        volume = 100;
+    }
+    if(volume < 30){
+        volume = 30;
+    }
     preferences.begin("volume-config");
     // 设置音频输出引脚和音量
     audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
@@ -1328,16 +1389,16 @@ void loop()
     {
         clickAndStart();
     }
-    // 外置检测按键是否按下
-    if (digitalRead(key_speak) == LOW)
-    {
-        delay(40);
-        // 避免抖动
-        if(digitalRead(key_speak) == LOW){
-            delay(200);
-            clickAndStart();
-        }
-    }
+    // // 外置检测按键是否按下
+    // if (digitalRead(key_speak) == LOW)
+    // {
+    //     delay(40);
+    //     // 避免抖动
+    //     if(digitalRead(key_speak) == LOW){
+    //         delay(200);
+    //         clickAndStart();
+    //     }
+    // }
     // 添加连续对话功能
     if (audioTTS.isplaying == 0 && Answer == "" && subindex == subAnswers.size() && conflag == 1)
     {
@@ -1348,6 +1409,8 @@ void loop()
     if(wifiStatus == 1){
         dnsServer.processNextRequest();   
     }
+    // 循环读取串口信息
+    getVoiceWakeData();
 }
 
 void clickAndStart()
@@ -1736,3 +1799,99 @@ String generateRandomString(size_t length) {
     }  
     return str;  
 } 
+
+
+//初始化
+void initVoiceWakeSerial(){
+  //打开串口
+  voiceWakeSerial.begin(BAUD);
+}
+
+//循环获取语音模块的串口数据
+void getVoiceWakeData(){
+  //从语音模块读取响应数据
+  if (voiceWakeSerial.available()>=1) 
+  {
+    //接收语音模块数据
+    int read1 = voiceWakeSerial.read();
+    int read2 = voiceWakeSerial.read();
+    
+    //判断
+    char result[5] = "";
+    itoa(read1, result, 10);
+    
+    //发送mqtt
+    //收到语音唤醒打开录音
+    if(read1 == 1){
+        clickAndStart();
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }
+    else if(read1 == 2){
+        // 音量最大
+        setVolume2(100);
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }else if(read1 == 3){
+        // 音量最小
+        setVolume2(30);
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }else if(read1 == 4){
+        // 音量中等
+        setVolume2(50);
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }else if(read1 == 5){
+        // 增大音量
+        setVolume2(volume+10);
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }else if(read1 == 6){
+        // 减小音量
+        setVolume2(volume-10);
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }else if(read1 == 7){
+        // 暂停播放
+        pauseVoice();
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }else if(read1 == 8){
+        // 停止播放
+        pauseVoice();
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }else if(read1 == 9){
+        // 打开网络
+        startWIfiAP(true);
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }else if(read1 == 10){ 
+        // 关闭网络
+        startWIfiAP(false);
+        //打印
+        Serial.print("收到内容：");
+        Serial.print(read1);Serial.print(" ");
+        Serial.print(read2);Serial.println();
+    }
+  }
+}
