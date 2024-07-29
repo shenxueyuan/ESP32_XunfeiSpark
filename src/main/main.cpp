@@ -1289,38 +1289,25 @@ void setup()
 
 
 void pauseVoice(){
-
     conflag = 0;
     // 停止播放音频
     audioTTS.isplaying = 0;
-    audioTTS.pauseResume();
+    audioTTS.stopSong();
     startPlay = false;
     isReady = false;
     Answer = "";
     flag = 0;
     subindex = 0;
     subAnswers.clear();
-    adc_start_flag = 1;
-
-    // 如果距离上次时间同步超过4分钟 // 超过4分钟，重新做一次鉴权
-    if (urlTime + 240000 < millis()) {
-        // 更新时间戳
-        urlTime = millis();
-        // 从服务器获取当前时间
-        getTimeFromServer();
-    }
-    askquestion = "";
-    
-    adc_complete_flag = 0;
 }
 
 void setVolume2(int vol){
     if(vol >= 100){
-        askquestion = "音量已调到最大";
+        askquestion = "音量调到最大了";
     }else if(vol == 50){
-        askquestion = "音量已调到中等";
+        askquestion = "音量调到中等了";
     }else if(volume <= 30){
-        askquestion = "音量已调到最小";
+        askquestion = "音量调到最小了";
     }else if(volume > vol){
         askquestion = "已为你减小音量";
     }else{
