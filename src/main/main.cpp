@@ -142,13 +142,14 @@ void initMusic();
 
 void initVoiceWakeSerial();
 void getVoiceWakeData();
+void printWakeData(int read1,int read2);
 
 void getText(String role, String content);
 void checkLen();
 float calculateRMS(uint8_t *buffer, int bufferSize);
 void ConnServerAI();
 void ConnServerASR();
-
+void WakeupAndStart();
 
 void startWIfiAP(bool isOpen);
 
@@ -391,40 +392,79 @@ void sendMsgToXunfeiAILLM()
     jsonData.clear();
 }
 
+
+DynamicJsonDocument gen_params_qwen()
+{
+    // 创建一个容量为1500字节的动态JSON文档
+    DynamicJsonDocument data(1500);
+
+    data["model"] = "qwen-turbo";
+    data["max_tokens"] = 100;
+    data["temperature"] = 0.6;
+    // data["stream"] = true;
+
+    JsonObject input = data.createNestedObject("input");
+    // 在message对象中创建一个名为text的嵌套数组
+    JsonArray textArray = input.createNestedArray("messages");
+
+    JsonObject systemMessage = textArray.createNestedObject();
+    systemMessage["role"] = "system";
+    systemMessage["content"] = roleContent;
+    // 将jsonVector中的内容添加到JsonArray中
+    for (const auto& jsonStr : text) {
+        DynamicJsonDocument tempDoc(512);
+        DeserializationError error = deserializeJson(tempDoc, jsonStr);
+        if (!error) {
+            textArray.add(tempDoc.as<JsonVariant>());
+        } else {
+            Serial.print("反序列化失败: ");
+            Serial.println(error.c_str());
+        }
+    }
+    // 返回构建好的JSON文档
+    return data;
+}
+
 // 将问题 发送给 阿里通义千问
 void sendMsgToQwenAILLM(String inputText) 
 {
-  HTTPClient http;
-  http.setTimeout(10000);
-  http.begin(qwenApiUrl);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("Authorization", String(qwenApiKey));
-  String payload = "{\"model\":\"qwen-turbo\",\"max_tokens\":100,\"input\":{\"messages\":[{\"role\": \"system\",\"content\": \""+roleContent+"\"},{\"role\": \"user\",\"content\": \"" + inputText + "\"}]}}";
-  int httpResponseCode = http.POST(payload);
-  if (httpResponseCode == 200) {
-    String response = http.getString();
-    http.end();
-   
-    StaticJsonDocument<1024> jsonDoc;
-    deserializeJson(jsonDoc, response);
-    String outputText = jsonDoc["output"]["text"];
-    Serial.print("qwen--answer:");Serial.println(outputText);
-    
-    Answer = outputText;
+    HTTPClient http;
+    http.setTimeout(10000);
+    http.begin(qwenApiUrl);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", String(qwenApiKey));
+    // 生成连接参数的JSON文档
+    DynamicJsonDocument jsonData = gen_params_qwen();
 
-    if(Answer.endsWith("。")){
-        Answer = Answer.substring(0,Answer.length()-1);
-        // Answer +="，回答完毕。";
-    }else{
-        // Answer +="回答完毕。";
+    // 将JSON文档序列化为字符串
+    String jsonString;
+    serializeJson(jsonData, jsonString);
+
+    // String payload = "{\"model\":\"qwen-turbo\",\"max_tokens\":100,\"input\":{\"messages\":[{\"role\": \"system\",\"content\": \""+roleContent+"\"},{\"role\": \"user\",\"content\": \"" + inputText + "\"}]}}";
+
+    Serial.print("qwen--jsonString:");
+    Serial.println(jsonString);
+
+    int httpResponseCode = http.POST(jsonString);
+    if (httpResponseCode == 200) {
+        String response = http.getString();
+        http.end();
+    
+        StaticJsonDocument<1024> jsonDoc;
+        deserializeJson(jsonDoc, response);
+        String outputText = jsonDoc["output"]["text"];
+        Serial.print("qwen--answer:");Serial.println(outputText);
+        
+        Answer = outputText;
+ 
+        getText("assistant", Answer);
+        segmentAnswer();
+        jsonDoc.clear();
+        outputText.clear();
+    } else {
+        http.end();
+        Serial.printf("通义千问error %i \n", httpResponseCode);
     }
-    segmentAnswer();
-    jsonDoc.clear();
-    outputText.clear();
-  } else {
-    http.end();
-    Serial.printf("通义千问error %i \n", httpResponseCode);
-  }
 }
 
 
@@ -571,7 +611,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
             // 如果问句为空，播放错误提示语音
             if (askquestion == "")
             {
-                askquestion = "我先退下了，有需要再叫唤醒我吧。";
+                askquestion = "我先下去了，有需要再叫唤醒我吧。";
                 connecttospeech(askquestion.c_str());
             }
             else
@@ -590,6 +630,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
                         ConnServerAI();
                     }else if(llmType ==2){
                         // 发送给 通义千问大模型
+                        getText("user", askquestion);
                         sendMsgToQwenAILLM(askquestion);
                     }
                 }
@@ -600,23 +641,8 @@ void onMessageCallbackASR(WebsocketsMessage message)
 
 int dealCommand(){
     int flag = 1;//默认命中任务
-    if (askquestion.indexOf("开") > -1 && askquestion.indexOf("网络") > -1)
-    {
-        startWIfiAP(true);
-        askquestion = "已为你打开网络";
-        connecttospeech(askquestion.c_str());
-        askquestion = "";
-        conflag = 1;
-    }
-    else if (askquestion.indexOf("关") > -1 && askquestion.indexOf("网络") > -1)
-    {
-        startWIfiAP(false);
-        askquestion = "已为你关闭网络。";
-        connecttospeech(askquestion.c_str());
-        askquestion = "";
-        conflag = 1;
-    }
-    else if ((askquestion.indexOf("开") > -1 
+
+    if ((askquestion.indexOf("开") > -1 
                 || (askquestion.indexOf("切") > -1 ) || (askquestion.indexOf("换") > -1 )
             ) 
             && (askquestion.indexOf("讯飞") > -1))
@@ -662,58 +688,7 @@ int dealCommand(){
         askquestion = "";
         conflag = 1;
     }
-    else if (askquestion.indexOf("大") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
-    {
-        if(askquestion.indexOf("最大")>-1){
-            volume = 100;
-            setVolume();
-            askquestion = "音量调到最大了，注意保护耳朵哦";
-        }else if(volume < 100){
-            if(volume < 50){
-                volume = volume + 30;
-            }else{
-                volume = volume + 20;
-            }
-            setVolume();
-            askquestion = "已为你增大音量";
-        }else{
-            askquestion = "声音已经调到最大了，不能再大了。";
-        }
-    
-        connecttospeech(askquestion.c_str());
-        // 打印内容
-        askquestion = "";
-        conflag = 1;
-    }
-    else if (askquestion.indexOf("小") > -1 && (askquestion.indexOf("音量") > -1 || askquestion.indexOf("声音") > -1))
-    {   
-        if(askquestion.indexOf("最小") >-1){
-            volume = 30;
-            setVolume();
-            askquestion = "音量减到最小，注意仔细听哦";   
-        }else if(volume > 10){
-            if(volume <= 50){
-                volume = volume - 10;
-            }else{
-                volume = volume - 20;
-            }
-            askquestion = "已为你减小音量";
-            setVolume();
-        }else{
-            askquestion = "音量减到最小了，再小就听不见啦。";    
-        }
-        connecttospeech(askquestion.c_str());
-        // 打印内容
-        askquestion = "";
-        conflag = 1;
-    }
-    else if (askquestion.indexOf("退下") > -1 || askquestion.indexOf("再见") > -1 || askquestion.indexOf("拜拜") > -1)
-    {
-        askquestion = "好的，我先退下了，有事再找我。";
-        connecttospeech(askquestion.c_str());
-        askquestion = "";
-        conflag = 0;
-    }else if (askquestion.indexOf("恢复") > -1 || askquestion.indexOf("出厂设置") > -1)
+    else if (askquestion.indexOf("恢复") > -1 || askquestion.indexOf("出厂设置") > -1)
     {
         askquestion = "好的，系统已恢复出厂设置。";
         
@@ -835,7 +810,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             // 一直没说话，8秒则结束
             if(null_voice >= 200)
             {
-                connecttospeech("我先退下了，有需要再叫我吧。");
+                connecttospeech("我先下去了，有需要再叫我吧。");
                 webSocketClientASR.close();
                 return;
             }
@@ -1088,17 +1063,6 @@ int wifiConnect()
                 
                 // 网络连接成功，关闭AP网络
                 startWIfiAP(false);
-
-                // 启动成功后欢迎语，5118大象
-                // if(per.indexOf("5118") > -1){
-                //     roleContent = roleDaxiang;
-                //     connecttospeech(welcome.c_str());
-                // }else if(per.indexOf("5003") > -1){
-                //     // 5003 奥特曼
-                //     roleContent = roleAoteMan;
-                //     connecttospeech(welcomeATM.c_str());
-                // }
-
                 // 输出当前空闲堆内存大小
                 Serial.println("Free Heap: " + String(ESP.getFreeHeap()));
                 
@@ -1266,16 +1230,11 @@ void setup()
         startWIfiAP(true);
     }
 
-
     // 从服务器获取当前时间
     getTimeFromServer();
 
-    preferences.begin("volume_config");
     volume = preferences.getInt("volume", 100);
-    audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
-    audioTTS.setVolume(volume);
-    Serial.print("初始化-当前音量：");
-    Serial.println(volume);
+    setVolume();
 
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
@@ -1285,8 +1244,6 @@ void setup()
     delay(2000);
 
 }
-
-
 
 void pauseVoice(){
     conflag = 0;
@@ -1299,21 +1256,10 @@ void pauseVoice(){
     flag = 0;
     subindex = 0;
     subAnswers.clear();
+    webSocketClientASR.close();
 }
 
 void setVolume2(int vol){
-    if(vol >= 100){
-        askquestion = "音量调到最大了";
-    }else if(vol == 50){
-        askquestion = "音量调到中等了";
-    }else if(volume <= 30){
-        askquestion = "音量调到最小了";
-    }else if(volume > vol){
-        askquestion = "已为你减小音量";
-    }else{
-        askquestion = "已为你增大音量";
-    }
-    connecttospeech(askquestion);
     volume = vol;
     
     setVolume();
@@ -1364,6 +1310,7 @@ void startWIfiAP(bool isOpen)
     }else{
         wifiStatus = 0;// 关闭网络
         WiFi.softAPdisconnect(true);
+        Serial.println("WebServer closed...");
     }
 }
 
@@ -1399,13 +1346,13 @@ void loop()
     // boot检测按键是否按下
     if (digitalRead(key_boot) == LOW)
     {
-        clickAndStart();
+        WakeupAndStart();
     }
     // 添加连续对话功能
     if (audioTTS.isplaying == 0 && Answer == "" && subindex == subAnswers.size() && conflag == 1)
     {
         Serial.println("开启连续对话...");
-        clickAndStart();
+        WakeupAndStart();
     }
 
     if(wifiStatus == 1){
@@ -1414,10 +1361,18 @@ void loop()
     // 循环读取串口信息
     getVoiceWakeData();
 }
-
-void clickAndStart()
+/**
+ * ASR唤醒 并 开始录音
+ */
+void WakeupAndStart()
 {
-    // delay(200);
+
+    webSocketClientASR.close();
+    // 点亮板载LED指示灯
+    digitalWrite(led, HIGH);
+    delay(200);
+    digitalWrite(led, LOW);
+
     conflag = 0;
     Serial.print("loopcount：");
     Serial.println(loopcount);
@@ -1449,6 +1404,7 @@ void clickAndStart()
     ConnServerASR();
     
     adc_complete_flag = 0;
+
 }
 
 // 设置websocket API地址 ，用于鉴权鉴权
@@ -1705,6 +1661,8 @@ void initMusic(){
     preferences.begin("music_store", false);
 
     int numMusic = preferences.getInt("numMusic", 0);
+    Serial.print("音乐数量》：");
+    Serial.println(numMusic);
     if(numMusic == 0){
         numMusic = 11;
 
@@ -1718,7 +1676,7 @@ void initMusic(){
         preferences.putString(("musicId" + String(2)).c_str(), "1417892410");
         
         preferences.putString(("musicName" + String(3)).c_str(), "莫扎特");
-        preferences.putString(("musicId" + String(0)).c_str(), "419485659");
+        preferences.putString(("musicId" + String(3)).c_str(), "419485659");
         
         preferences.putString(("musicName" + String(4)).c_str(), "小兔子乖乖");
         preferences.putString(("musicId" + String(4)).c_str(), "566443169");
@@ -1878,95 +1836,67 @@ void getVoiceWakeData(){
     char result[5] = "";
     itoa(read1, result, 10);
     
-    //发送mqtt
-    //收到语音唤醒打开录音
     if(read1 == 1){
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
-
+        //收到语音唤醒打开录音
+        printWakeData(read1,read2);
+        WakeupAndStart();
+        // 避免重复收到消息
         delay(500);
-        clickAndStart();
     }
     else if(read1 == 2){
         // 音量最大
+        printWakeData(read1,read2);
+        pauseVoice();
         setVolume2(100);
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
     }else if(read1 == 3){
         // 音量最小
+        printWakeData(read1,read2);
+        pauseVoice();
         setVolume2(30);
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
     }else if(read1 == 4){
         // 音量中等
-        setVolume2(50);
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
+        printWakeData(read1,read2);
+        pauseVoice();
+        setVolume2(70);
     }else if(read1 == 5){
         // 增大音量
+        printWakeData(read1,read2);
+        pauseVoice();
         setVolume2(volume+10);
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
     }else if(read1 == 6){
         // 减小音量
-        setVolume2(volume-10);
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
-    }
-    else if(read1 == 7){
-        // 暂停播放
+        printWakeData(read1,read2);
         pauseVoice();
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
+        setVolume2(volume-10);
+    }else if(read1 == 7){
+        // 暂停播放
+        printWakeData(read1,read2);
+        pauseVoice();
     }else if(read1 == 8){
         // 停止播放
+        printWakeData(read1,read2);
         pauseVoice();
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
-    }
-    else if(read1 == 9){
+    }else if(read1 == 9){
         // 打开网络
-        startWIfiAP(true);
-        askquestion = "已为你打开网络";
-        connecttospeech(askquestion);
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
-    }
-    else if(read1 == 10){ 
-        // 关闭网络
-        startWIfiAP(false);
-        askquestion = "已为你关闭网络";
-        connecttospeech(askquestion);
-        //打印
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
-    }else if(read1 == 11){ 
-        // 退下吧
+        printWakeData(read1,read2);
         pauseVoice();
-        askquestion = "好的，我先退下了，有需要再唤醒我吧。";
-        connecttospeech(askquestion);
-        Serial.print("收到内容：");
-        Serial.print(read1);Serial.print(" ");
-        Serial.print(read2);Serial.println();
+        startWIfiAP(true);
+    }else if(read1 == 16){ 
+        // 关闭网络
+        printWakeData(read1,read2);
+        pauseVoice();
+        startWIfiAP(false);
+    }else if(read1 == 17){ 
+        // 退下、再见
+        printWakeData(read1,read2);
+        pauseVoice();
     }
   }
+}
+
+// 打印收到的消息，延迟500毫秒，避免抖动重复收到消息
+void printWakeData(int read1,int read2){
+    Serial.print("收到内容：");
+    Serial.print(read1);Serial.print(" ");
+    Serial.print(read2);Serial.println();
 }
