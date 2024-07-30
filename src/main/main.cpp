@@ -106,7 +106,7 @@ int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
 int volume = 100;// 音量大小
-int textLimit=150; // 超过多长 要分割，立马播放
+int textLimit=180; // 超过多长 要分割，立马播放
 int llmType = 3; // 1:讯飞AI 2:通义千问 3:豆包，火山引擎
 HTTPClient https; // 创建一个HTTP客户端对象
 
@@ -411,12 +411,11 @@ void sendMsgToQwenAILLM()
     http.addHeader("Authorization", String(qwenApiKey));
     // 生成连接参数的JSON文档
     DynamicJsonDocument jsonData = gen_params_qwen();
-
     // 将JSON文档序列化为字符串
     String jsonString;
     serializeJson(jsonData, jsonString);
 
-    // String payload = "{\"model\":\"qwen-turbo\",\"max_tokens\":100,\"input\":{\"messages\":[{\"role\": \"system\",\"content\": \""+roleContent+"\"},{\"role\": \"user\",\"content\": \"" + inputText + "\"}]}}";
+    // String payload = "{\"model\":\"qwen-turbo\",\"max_tokens\":100,\"input\":{\"messages\":[{\"role\": \"system\",\"content\": \""+roleContent+"\"},{\"role\": \"user\",\"content\": \"" + question + "\"}]}}";
 
     // Serial.print("qwen--jsonString:");
     // Serial.println(jsonString);
@@ -440,6 +439,8 @@ void sendMsgToQwenAILLM()
         Answer = "";
     
         jsonDoc.clear();
+        jsonData.clear();
+        jsonString.clear();
         outputText.clear();
     } else {
         http.end();
@@ -527,6 +528,37 @@ void sendMsgToDoubaoAILLM()
                 }
             }
         }
+
+        /* 非流式调用，不推荐，因为没有足够大小的DynamicJsonDocument来存储一次性返回的长文本回复
+        String response = http.getString();
+        http.end();
+        Serial.println(response);
+
+        // Parse JSON response
+        int status = 0;
+        DynamicJsonDocument jsonDoc(1024);
+        deserializeJson(jsonDoc, response);
+        const char *content = jsonDoc["choices"][0]["message"]["content"];
+        const char *removeSet = "\n*$"; // 定义需要移除的符号集
+        // 计算新字符串的最大长度
+        int length = strlen(content) + 1;
+        char *cleanedContent = new char[length];
+        removeChars(content, cleanedContent, removeSet);
+        Serial.println(cleanedContent);
+
+        // 将内容追加到Answer字符串中
+        Answer += cleanedContent;
+        content = "";
+        // 释放分配的内存
+        delete[] cleanedContent;
+        while (Answer != "")
+        {
+            if (Answer.length() < 180)
+                status = 2;
+            processResponse(status);
+        }
+        jsonDoc.clear();
+        */
         return;
     } 
     else 
@@ -699,7 +731,6 @@ void onMessageCallbackASR(WebsocketsMessage message)
         // 输出收到的讯飞云返回消息
         Serial.println("xunfeiyun return message:");
         Serial.println(message.data());
-        receiveFrame = 0;
 
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
@@ -729,8 +760,10 @@ void onMessageCallbackASR(WebsocketsMessage message)
             // 如果问句为空，播放错误提示语音
             if (askquestion == "")
             {
-                askquestion = "我先下去了，有需要再叫唤醒我吧。";
+                askquestion = "对不起，没有听清，可以再说一遍嘛？";
                 connecttospeech(askquestion.c_str());
+                askquestion = "";
+                conflag = 1;
             }
             else
             {
@@ -934,8 +967,12 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             float rms = calculateRMS((uint8_t *)audioRecord.wavData[0], 1280);
             printf("%d %f\n", 0, rms);
 
-            // 一直没说话，8秒则结束
-            if(null_voice >= 200)
+            // Serial.print("null_voice:");
+            // Serial.println(null_voice);
+            // Serial.print("silence:");
+            // Serial.println(silence);
+            // 一直没说话，6秒则结束
+            if(null_voice >= 150)
             {
                 connecttospeech("我先下去了，有需要再叫我吧。");
                 webSocketClientASR.close();
@@ -952,7 +989,9 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
                 }
             }
             else
-            {
+            { 
+                if (null_voice > 0)
+                    null_voice--;
                 voice++;
                 if (voice >= 5)
                 {
@@ -965,8 +1004,8 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
                 silence = 0;
             }
 
-            // 如果静音达到10个周期，发送结束标志的音频数据
-            if (silence == 10)
+            // 如果静音达到8个周期，发送结束标志的音频数据
+            if (silence == 8)
             {
                 data["status"] = 2;
                 data["format"] = "audio/L16;rate=16000";
@@ -1548,6 +1587,8 @@ void getText(String role, String content)
 {
      // 检查并调整文本长度
     checkLen();
+    // todo 测试 取消上下文。
+    text.clear();
 
     // 创建一个静态JSON文档，容量为512字节
     StaticJsonDocument<512> jsoncon;
@@ -1566,9 +1607,9 @@ void getText(String role, String content)
     text.push_back(jsonString);
 
     // 输出vector中的内容
-    for (const auto& jsonStr : text) {
-        Serial.println(jsonStr);
-    }
+    // for (const auto& jsonStr : text) {
+    //     Serial.println(jsonStr);
+    // }
 
     // 清空临时JSON文档
     jsoncon.clear();
