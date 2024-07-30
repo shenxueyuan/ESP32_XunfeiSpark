@@ -106,7 +106,7 @@ int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
 int volume = 100;// 音量大小
-int textLimit=100; // 超过多长 要分割，立马播放
+int textLimit=150; // 超过多长 要分割，立马播放
 int llmType = 3; // 1:讯飞AI 2:通义千问 3:豆包，火山引擎
 HTTPClient https; // 创建一个HTTP客户端对象
 
@@ -163,8 +163,7 @@ void startWIfiAP(bool isOpen);
 int dealCommand();
 void getBaiduAccessToken();
 void connecttospeech(String content);
-void sendMsgToQwenAILLM(String queston);
-void segmentAnswer();
+void sendMsgToQwenAILLM();
 void sendMsgToXunfeiAILLM();
 
 // 创建动态JSON文档对象和数组
@@ -279,6 +278,7 @@ void onMessageCallbackAI(WebsocketsMessage message)
             Serial.println(cleanedContent);
 
             Answer += cleanedContent;
+            // 处理讯飞流式返回
             processResponse(status);
         }
     }
@@ -287,10 +287,6 @@ void onMessageCallbackAI(WebsocketsMessage message)
 // 统一调用百度TTS
 void connecttospeech(String content){
     delay(200);
-    // Serial.print("speech-->conent:");Serial.println(content);
-    // Serial.print("speech-->per:");Serial.println(per);
-    // Serial.print("speech-->accesstoken:");Serial.println(accessToken);
-    // Serial.print("speech-->deviceToken:");Serial.println(deviceToken);
     audioTTS.connecttospeech(content.c_str(), "zh",per.c_str(),accessToken.c_str(),deviceToken.c_str());
 }
 
@@ -406,7 +402,7 @@ DynamicJsonDocument gen_params_qwen()
 }
 
 // 将问题 发送给 阿里通义千问
-void sendMsgToQwenAILLM(String inputText) 
+void sendMsgToQwenAILLM() 
 {
     HTTPClient http;
     http.setTimeout(10000);
@@ -422,8 +418,8 @@ void sendMsgToQwenAILLM(String inputText)
 
     // String payload = "{\"model\":\"qwen-turbo\",\"max_tokens\":100,\"input\":{\"messages\":[{\"role\": \"system\",\"content\": \""+roleContent+"\"},{\"role\": \"user\",\"content\": \"" + inputText + "\"}]}}";
 
-    Serial.print("qwen--jsonString:");
-    Serial.println(jsonString);
+    // Serial.print("qwen--jsonString:");
+    // Serial.println(jsonString);
 
     int httpResponseCode = http.POST(jsonString);
     if (httpResponseCode == 200) {
@@ -438,7 +434,11 @@ void sendMsgToQwenAILLM(String inputText)
         Answer = outputText;
  
         getText("assistant", Answer);
-        segmentAnswer();
+        
+        subAnswers.push_back(Answer.c_str());
+        startPlay = true;
+        Answer = "";
+    
         jsonDoc.clear();
         outputText.clear();
     } else {
@@ -517,7 +517,7 @@ void sendMsgToDoubaoAILLM()
                         status = 2;
                         Serial.println("status: 2");
                     }
-
+                    // 处理豆包流式返回
                     processResponse(status);
 
                     if (status == 2)
@@ -541,8 +541,9 @@ void sendMsgToDoubaoAILLM()
 
 void processResponse(int status)
 {
+    
     // 如果Answer的长度超过180且音频没有播放
-    if (Answer.length() >= 180 && (audioTTS.isplaying == 0) && flag == 0)
+    if (Answer.length() >= textLimit && (audioTTS.isplaying == 0) && flag == 0)
     {
         if (Answer.length() >= 300)
         {
@@ -591,7 +592,7 @@ void processResponse(int status)
         conflag = 1;
     }
     // 存储多段子音频
-    else if (Answer.length() >= 180)
+    else if (Answer.length() >= textLimit)
     {
         if (Answer.length() >= 300)
         {
@@ -660,48 +661,6 @@ void getBaiduAccessToken()
         http.end();
         Serial.printf("百度token %i \n", httpResponseCode);
     }
-}
-
-
-// 将内容分割成小段
-void segmentAnswer(){
-    String answer = "";
-    if(Answer == ""){
-        return;
-    }
-
-
-    subAnswers.push_back(Answer.c_str());
-    startPlay = true;
-    
-    // ↓把回答文字缩短，这里不拆了。不然 播放语音有明显的断句。影响体验。↓
-
-
-    // int lastPeriodIndex = Answer.indexOf("。");
-
-    // while(lastPeriodIndex != -1 ){
-    //     answer = Answer.substring(0, lastPeriodIndex + 1);
-    //     subAnswers.push_back(answer.c_str());
-    //     Answer = Answer.substring(lastPeriodIndex + 2);
-    //     lastPeriodIndex = Answer.indexOf("。");
-    //     startPlay = true;
-    // }
- 
-    // int secondIndex = Answer.indexOf("，");
-    // while(secondIndex != -1 ){
-    //     answer = Answer.substring(0, secondIndex + 1);
-    //     subAnswers.push_back(answer.c_str());
-    //     Answer = Answer.substring(secondIndex + 2);
-    //     secondIndex = Answer.indexOf("，");
-    //     startPlay = true;
-    // }
- 
-    // answer = Answer.substring(0, Answer.length());
-    // if(answer.length() >= 5){
-    //     subAnswers.push_back(answer.c_str());
-    //     startPlay = true;
-    // }
-    Answer = "";
 }
 
 // 将接收到的语音转成文本
@@ -790,7 +749,7 @@ void onMessageCallbackASR(WebsocketsMessage message)
                     }else if(llmType == 2){
                         // 发送给 通义千问大模型
                         getText("user", askquestion);
-                        sendMsgToQwenAILLM(askquestion);
+                        sendMsgToQwenAILLM();
                     }else if(llmType == 3){
                         // 发送给 豆包大模型
                         getText("user", askquestion);
@@ -901,8 +860,12 @@ int dealCommand(){
             if(llmType == 1){
                 getText("user", askquestion);
                 ConnServerAI();
-            }else{
-                sendMsgToQwenAILLM(askquestion);
+            }else if(llmType == 2){
+                getText("user", askquestion);
+                sendMsgToQwenAILLM();
+            }else if(llmType == 3){
+                getText("user", askquestion);
+                sendMsgToDoubaoAILLM();
             }
         } else {
             // 自建音乐服务器，按照文件名查找对应歌曲
@@ -2066,14 +2029,17 @@ void getVoiceWakeData(){
     }else if(read1 == 18){ 
         // 切换豆包大模型
         printWakeData(read1,read2);
+        pauseVoice();
         setLLMType(3);
     }else if(read1 == 19){ 
         // 切换讯飞星火大模型
         printWakeData(read1,read2);
+        pauseVoice();
         setLLMType(1);
     }else if(read1 == 20){ 
         // 切换通义千问大模型
         printWakeData(read1,read2);
+        pauseVoice();
         setLLMType(2);
     }
   }
