@@ -82,6 +82,12 @@ String baiduApiUrl = "https://aip.baidubce.com/oauth/2.0/token?client_id=YcYPjhx
 // 阿里 websocket
 String aliAsrURL = "ws://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1?token=025554a2d70e4a389cfa317838ac24a4";
 
+// 豆包
+String model_doubao = "ep-20240730141954-5s52q";   // 在线推理接入点名称，必填
+const char* doubao_apiKey = "86d7d530-e843-4589-b417-592848e65e7c";     // 火山引擎API Key，必填
+String douBaoApiUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+
+
 String answerHello = "嗯，收到。";
 String answerHello2 = "收到。";
 String accessToken = "24.e6e04657327b33f31c8927d754e54823.2592000.1723806315.282335 - 86622984";
@@ -101,7 +107,7 @@ int receiveFrame = 0;
 int noise = 50;
 int volume = 100;// 音量大小
 int textLimit=100; // 超过多长 要分割，立马播放
-int llmType = 2; // 1:讯飞AI 2:通义千问
+int llmType = 3; // 1:讯飞AI 2:通义千问 3:豆包，火山引擎
 HTTPClient https; // 创建一个HTTP客户端对象
 
 int wifiStatus = 0;// 网络热点开关 1：打开 0：关闭
@@ -139,6 +145,7 @@ void handleDeleteMusic(AsyncWebServerRequest *request);
 void handleListMusic(AsyncWebServerRequest *request);
 String generateRandomString(size_t length);
 void initMusic();
+void processResponse(int status);
 
 void initVoiceWakeSerial();
 void getVoiceWakeData();
@@ -181,8 +188,9 @@ String text_temp = "";
 
 String welcome = "小朋友，你好啊，我是大象，快来跟我聊天吧";
 String welcomeATM = "小朋友，你好啊，我是赛文奥特曼，让我们一起来拯救地球吧！";
-String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，答案缩减到50字以内;";
-String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到50字以内;";
+String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，答案缩减到100字以内;";
+
+String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
 String roleContent = roleDaxiang;
 
 // 星火大模型参数
@@ -269,67 +277,9 @@ void onMessageCallbackAI(WebsocketsMessage message)
             char *cleanedContent = new char[length];
             removeChars(content, cleanedContent, removeSet);
             Serial.println(cleanedContent);
-            
 
             Answer += cleanedContent;
-
-            if (Answer.length() >= textLimit && (audioTTS.isplaying == 0))
-            {
-                String subAnswer = Answer.substring(0, textLimit);
-                Serial.print("subAnswer-line190:");
-                Serial.println(subAnswer);
-
-                int lastPeriodIndex = subAnswer.lastIndexOf("。");
-
-                if (lastPeriodIndex != -1)
-                {
-                    String answer = Answer.substring(0, lastPeriodIndex + 1);
-                    Serial.print("answer-line197: ");
-                    Serial.println(answer);
-                    Answer = Answer.substring(lastPeriodIndex + 2);
-                    Serial.print("Answer-line200: ");
-                    Serial.println(Answer);
-                    connecttospeech(answer.c_str());
-                    Serial.print("speech-line201");
-                }
-                else
-                {
-                    const char *chinesePunctuation = "[.,;!?()<>‘。、，；！？《》（）“”‘’]";
-
-                    int lastChineseSentenceIndex = -1;
-
-                    for (int i = 0; i < Answer.length(); ++i)
-                    {
-                        char currentChar = Answer.charAt(i);
-
-                        if (strchr(chinesePunctuation, currentChar) != NULL)
-                        {
-                            lastChineseSentenceIndex = i;
-                        }
-                    }
-                    if (lastChineseSentenceIndex != -1)
-                    {
-                        String answer = Answer.substring(0, lastChineseSentenceIndex + 1);
-                        connecttospeech(answer.c_str());
-                        Serial.print("speech-line224");
-                        Answer = Answer.substring(lastChineseSentenceIndex + 2);
-                    }
-                }
-                startPlay = true;
-                conflag = 1;
-            }
-
-            if (status == 2)
-            {
-                getText("assistant", Answer);
-                if (audioTTS.isplaying == 0)
-                {
-                    connecttospeech(Answer.c_str());
-                    Serial.print("speech-line244");
-                    Answer = "";
-                    conflag = 1;
-                }
-            }
+            processResponse(status);
         }
     }
 }
@@ -392,6 +342,36 @@ void sendMsgToXunfeiAILLM()
     jsonData.clear();
 }
 
+DynamicJsonDocument gen_params_doubao(const char *model, const char *role_set)
+{
+    // 创建一个容量为1500字节的动态JSON文档
+    DynamicJsonDocument data(1500);
+
+    data["model"] = model;
+    data["max_tokens"] = 100;
+    data["temperature"] = 0.6;
+    data["stream"] = true;
+
+    // 在message对象中创建一个名为text的嵌套数组
+    JsonArray textArray = data.createNestedArray("messages");
+
+    JsonObject systemMessage = textArray.createNestedObject();
+    systemMessage["role"] = "system";
+    systemMessage["content"] = role_set;
+    // 将jsonVector中的内容添加到JsonArray中
+    for (const auto& jsonStr : text) {
+        DynamicJsonDocument tempDoc(512);
+        DeserializationError error = deserializeJson(tempDoc, jsonStr);
+        if (!error) {
+            textArray.add(tempDoc.as<JsonVariant>());
+        } else {
+            Serial.print("反序列化失败: ");
+            Serial.println(error.c_str());
+        }
+    }
+    // 返回构建好的JSON文档
+    return data;
+}
 
 DynamicJsonDocument gen_params_qwen()
 {
@@ -468,7 +448,192 @@ void sendMsgToQwenAILLM(String inputText)
 }
 
 
+// 问题发送给豆包大模型并接受回答，然后转成语音
+void sendMsgToDoubaoAILLM()
+{
+    HTTPClient http;
+    http.setTimeout(20000);     // 设置请求超时时间
+    http.begin(douBaoApiUrl);
+    http.addHeader("Content-Type", "application/json");
+    String token_key = String("Bearer ") + doubao_apiKey;
+    http.addHeader("Authorization", token_key);
 
+    // 向串口输出提示信息
+    Serial.println("Send message to doubao!");
+
+    // 生成连接参数的JSON文档
+    DynamicJsonDocument jsonData = gen_params_doubao(model_doubao.c_str(), roleContent.c_str());
+
+    // 将JSON文档序列化为字符串
+    String jsonString;
+    serializeJson(jsonData, jsonString);
+
+    // 向串口输出生成的JSON字符串
+    Serial.println(jsonString);
+    int httpResponseCode = http.POST(jsonString);
+
+    if (httpResponseCode == 200) {
+        // 在 stream（流式调用） 模式下，基于 SSE (Server-Sent Events) 协议返回生成内容，每次返回结果为生成的部分内容片段
+        WiFiClient* stream = http.getStreamPtr();   // 返回一个指向HTTP响应流的指针，通过它可以读取服务器返回的数据
+
+        while (stream->connected()) {   // 这个循环会一直运行，直到客户端（即stream）断开连接。
+            String line = stream->readStringUntil('\n');    // 从流中读取一行字符串，直到遇到换行符\n为止
+            // 检查读取的行是否以data:开头。
+            // 在SSE（Server-Sent Events）协议中，服务器发送的数据行通常以data:开头，这样客户端可以识别出这是实际的数据内容。
+            if (line.startsWith("data:")) {
+                // 如果行以data:开头，提取出data:后面的部分，并去掉首尾的空白字符。
+                String data = line.substring(5);
+                data.trim();
+                // 输出读取的数据，不建议，因为太多了，一次才一两个字
+                //Serial.print("data: ");
+                //Serial.println(data);
+
+                int status = 0;
+                DynamicJsonDocument jsonResponse(400);
+                // 解析收到的数据
+                DeserializationError error = deserializeJson(jsonResponse, data);
+
+                // 如果解析没有错误
+                if (!error)
+                {
+                    const char *content = jsonResponse["choices"][0]["delta"]["content"];
+                    if (jsonResponse["choices"][0]["delta"]["content"] != "")
+                    {
+                        const char *removeSet = "\n*$"; // 定义需要移除的符号集
+                        // 计算新字符串的最大长度
+                        int length = strlen(content) + 1;
+                        char *cleanedContent = new char[length];
+                        removeChars(content, cleanedContent, removeSet);
+                        Serial.println(cleanedContent);
+
+                        // 将内容追加到Answer字符串中
+                        Answer += cleanedContent;
+                        content = "";
+                        // 释放分配的内存
+                        delete[] cleanedContent;
+                    }
+                    else
+                    {
+                        status = 2;
+                        Serial.println("status: 2");
+                    }
+
+                    processResponse(status);
+
+                    if (status == 2)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        return;
+    } 
+    else 
+    {
+        Serial.printf("Error %i \n", httpResponseCode);
+        Serial.println(http.getString());
+        http.end();
+        return;
+    }
+}
+
+
+void processResponse(int status)
+{
+    // 如果Answer的长度超过180且音频没有播放
+    if (Answer.length() >= 180 && (audioTTS.isplaying == 0) && flag == 0)
+    {
+        if (Answer.length() >= 300)
+        {
+            // 查找第一个句号的位置
+            int firstPeriodIndex = Answer.indexOf("。");
+            // 如果找到句号
+            if (firstPeriodIndex != -1)
+            {
+                // 提取完整的句子并播放
+                String subAnswer1 = Answer.substring(0, firstPeriodIndex + 3);
+                Serial.print("subAnswer1:");
+                Serial.println(subAnswer1);
+
+                // 将提取的句子转换为语音
+                connecttospeech(subAnswer1.c_str());
+
+                // 获取最终转换的文本
+                getText("assistant", subAnswer1);
+                // tft.setCursor(56, 152);
+                // tft.print(loopcount);
+                flag = 1;
+
+                // 更新Answer，去掉已处理的部分
+                Answer = Answer.substring(firstPeriodIndex + 3);
+                subAnswer1.clear();
+                // 设置播放开始标志
+                startPlay = true;
+            }
+        }
+        else
+        {
+            String subAnswer1 = Answer.substring(0, Answer.length());
+            Serial.print("subAnswer1:");
+            Serial.println(subAnswer1);
+            subAnswer1.clear();
+
+            connecttospeech(Answer.c_str());
+            // 获取最终转换的文本
+            getText("assistant", Answer);
+            flag = 1;
+
+            Answer = Answer.substring(Answer.length());
+            // 设置播放开始标志
+            startPlay = true;
+        }
+        conflag = 1;
+    }
+    // 存储多段子音频
+    else if (Answer.length() >= 180)
+    {
+        if (Answer.length() >= 300)
+        {
+            // 查找第一个句号的位置
+            int firstPeriodIndex = Answer.indexOf("。");
+            // 如果找到句号
+            if (firstPeriodIndex != -1)
+            {
+                subAnswers.push_back(Answer.substring(0, firstPeriodIndex + 3));
+                Serial.print("subAnswer");
+                Serial.print(subAnswers.size() + 1);
+                Serial.print("：");
+                Serial.println(subAnswers[subAnswers.size() - 1]);
+
+                Answer = Answer.substring(firstPeriodIndex + 3);
+            }
+        }
+        else
+        {
+            subAnswers.push_back(Answer.substring(0, Answer.length()));
+            Serial.print("subAnswer");
+            Serial.print(subAnswers.size() + 1);
+            Serial.print("：");
+            Serial.println(subAnswers[subAnswers.size() - 1]);
+
+            Answer = Answer.substring(Answer.length());
+        }
+    }
+
+    // 如果status为2（回复的内容接收完成），且回复的内容小于180字节
+    if (status == 2 && flag == 0)
+    {
+        // 播放最终转换的文本
+        connecttospeech(Answer.c_str());
+        // 显示最终转换的文本
+        getText("assistant", Answer);
+        Answer = "";
+        conflag = 1;
+    }
+    //else if (Answer.length() < 180)
+        //break;
+}
 void getBaiduAccessToken() 
 {
     HTTPClient http;
@@ -577,12 +742,6 @@ void onMessageCallbackASR(WebsocketsMessage message)
         Serial.println(message.data());
         receiveFrame = 0;
 
-        // if(llmType==1){
-        //     connecttospeech(answerHello.c_str());
-        // }else{
-        //     connecttospeech(answerHello2.c_str());
-        // }
-
         // 获取JSON数据中的结果部分，并提取文本内容
         JsonArray ws = jsonDocument["data"]["result"]["ws"].as<JsonArray>();
         if (jsonDocument["data"]["status"] != 2)
@@ -626,12 +785,16 @@ void onMessageCallbackASR(WebsocketsMessage message)
                 if(commandFlag == 0 ){
                     if (llmType == 1){
                         getText("user", askquestion);
-                        // 发送给讯飞大模型
+                        // 发送给 讯飞大模型
                         ConnServerAI();
-                    }else if(llmType ==2){
+                    }else if(llmType == 2){
                         // 发送给 通义千问大模型
                         getText("user", askquestion);
                         sendMsgToQwenAILLM(askquestion);
+                    }else if(llmType == 3){
+                        // 发送给 豆包大模型
+                        getText("user", askquestion);
+                        sendMsgToDoubaoAILLM();
                     }
                 }
             }
@@ -642,31 +805,32 @@ void onMessageCallbackASR(WebsocketsMessage message)
 int dealCommand(){
     int flag = 1;//默认命中任务
 
-    if ((askquestion.indexOf("开") > -1 
-                || (askquestion.indexOf("切") > -1 ) || (askquestion.indexOf("换") > -1 )
-            ) 
-            && (askquestion.indexOf("讯飞") > -1))
-    {
-        askquestion = "已切换为讯飞星火大模型";
-        llmType = 1;
-        connecttospeech(askquestion.c_str());
-        // 打印内容
-        askquestion = "";
-        conflag = 1;
-    }
-    else if ((askquestion.indexOf("开") > -1 
-                || (askquestion.indexOf("切") > -1 ) || (askquestion.indexOf("换") > -1 )
-            ) 
-            && (askquestion.indexOf("千问") > -1 || askquestion.indexOf("阿里") > -1))
-    {
-        askquestion = "已切换为阿里通义千问大模型";
-        llmType = 2;
-        connecttospeech(askquestion.c_str());
-        // 打印内容
-        askquestion = "";
-        conflag = 1;
-    }
-    else if ((askquestion.indexOf("切") > -1 || (askquestion.indexOf("换") > -1 )) && askquestion.indexOf("奥特曼") > -1)
+    // if ((askquestion.indexOf("开") > -1 
+    //             || (askquestion.indexOf("切") > -1 ) || (askquestion.indexOf("换") > -1 )
+    //         ) 
+    //         && (askquestion.indexOf("讯飞") > -1))
+    // {
+    //     askquestion = "已切换为讯飞星火大模型";
+    //     llmType = 1;
+    //     connecttospeech(askquestion.c_str());
+    //     // 打印内容
+    //     askquestion = "";
+    //     conflag = 1;
+    // }
+    // else if ((askquestion.indexOf("开") > -1 
+    //             || (askquestion.indexOf("切") > -1 ) || (askquestion.indexOf("换") > -1 )
+    //         ) 
+    //         && (askquestion.indexOf("千问") > -1 || askquestion.indexOf("阿里") > -1))
+    // {
+    //     askquestion = "已切换为阿里通义千问大模型";
+    //     llmType = 2;
+    //     connecttospeech(askquestion.c_str());
+    //     // 打印内容
+    //     askquestion = "";
+    //     conflag = 1;
+    // }
+    // else 
+    if ((askquestion.indexOf("切") > -1 || (askquestion.indexOf("换") > -1 )) && askquestion.indexOf("奥特曼") > -1)
     {
         askquestion = welcomeATM;
         roleContent = roleAoteMan;
@@ -1207,6 +1371,8 @@ void setup()
     accessToken = preferences.getString("accessToken");
 
     deviceToken = preferences.getString("deviceToken","");
+
+    llmType = preferences.getInt("llmType",2);
 
     if(deviceToken == ""){
         deviceToken = generateRandomString(32);
@@ -1816,6 +1982,13 @@ String generateRandomString(size_t length) {
     return str;  
 } 
 
+void setLLMType(int type){
+    llmType = type;
+    preferences.begin("wifi-config");
+    preferences.putInt("llmType",type);
+    preferences.end();
+}
+
 
 //初始化
 void initVoiceWakeSerial(){
@@ -1890,6 +2063,18 @@ void getVoiceWakeData(){
         // 退下、再见
         printWakeData(read1,read2);
         pauseVoice();
+    }else if(read1 == 18){ 
+        // 切换豆包大模型
+        printWakeData(read1,read2);
+        setLLMType(3);
+    }else if(read1 == 19){ 
+        // 切换讯飞星火大模型
+        printWakeData(read1,read2);
+        setLLMType(1);
+    }else if(read1 == 20){ 
+        // 切换通义千问大模型
+        printWakeData(read1,read2);
+        setLLMType(2);
     }
   }
 }
