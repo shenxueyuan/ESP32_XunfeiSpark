@@ -1023,7 +1023,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             if (silence == 8)
             {
                 data["status"] = 2;
-                data["format"] = "audio/L16;rate=16000";
+                data["format"] = "audio/L16;rate=8000";
                 data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
                 data["encoding"] = "raw";
                 j++;
@@ -1040,7 +1040,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             if (firstframe == 1)
             {
                 data["status"] = 0;
-                data["format"] = "audio/L16;rate=16000";
+                data["format"] = "audio/L16;rate=8000";
                 data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
                 data["encoding"] = "raw";
                 j++;
@@ -1069,7 +1069,7 @@ void onEventsCallbackASR(WebsocketsEvent event, String data)
             {
                 // 处理后续帧音频数据
                 data["status"] = 1;
-                data["format"] = "audio/L16;rate=16000";
+                data["format"] = "audio/L16;rate=8000";
                 data["audio"] = base64::encode((byte *)audioRecord.wavData[0], 1280);
                 data["encoding"] = "raw";
 
