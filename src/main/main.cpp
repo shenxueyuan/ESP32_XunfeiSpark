@@ -109,6 +109,8 @@ HTTPClient https; // 创建一个HTTP客户端对象
 
 int wifiStatus = 0;// 网络热点开关 1：打开 0：关闭
 
+int openContextFlag = 0 ; // 聊天上下文，默认关闭
+
 hw_timer_t *timer = NULL; // 定义硬件定时器对象
 
 uint8_t adc_start_flag = 0;
@@ -185,9 +187,9 @@ String text_temp = "";
 
 String welcome = "小朋友，你好啊，我是大象，快来跟我聊天吧";
 String welcomeATM = "小朋友，你好啊，我是赛文奥特曼，让我们一起来拯救地球吧！";
-String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，答案缩减到50字以内;";
+String roleDaxiang = "你是一个人类儿童，名字叫大象，工作是陪伴儿童学习诗、词、歌、赋，并解答儿童的十万个为什么，回答问题时要引导儿童身心健康，答案缩减到100字以内;";
 
-String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到50字以内;";
+String roleAoteMan = "你的角色是日本动漫里的赛文奥特曼，你的职责是陪伴儿童，教导儿童勇敢、积极向上面对问题，帮助儿童日常学习、身心健康。并以奥特曼视角解答问题，并且答案缩减到100字以内;";
 String roleContent = roleDaxiang;
 
 // 星火大模型参数
@@ -373,8 +375,8 @@ DynamicJsonDocument gen_params_qwen()
     DynamicJsonDocument data(1500);
 
     data["model"] = "qwen-turbo";
-    // data["max_tokens"] = 100;
-    // data["temperature"] = 0.6;
+    data["max_tokens"] = 100;
+    data["temperature"] = 0.6;
     data["stream"] = true;
 
     // 在message对象中创建一个名为text的嵌套数组
@@ -1389,6 +1391,8 @@ void setup()
 
     deviceToken = preferences.getString("deviceToken","");
 
+    openContextFlag = preferences.getInt("openContextFlag",0);
+
     llmType = preferences.getInt("llmType",2);
 
     if(deviceToken == ""){
@@ -1602,8 +1606,10 @@ void getText(String role, String content)
 {
      // 检查并调整文本长度
     checkLen();
-    // todo 测试 取消上下文。
-    text.clear();
+    if(openContextFlag != 1){
+        // todo 测试 取消上下文。
+        text.clear();
+    }
 
     // 创建一个静态JSON文档，容量为512字节
     StaticJsonDocument<512> jsoncon;
@@ -2008,6 +2014,11 @@ void setLLMType(int type){
     preferences.end();
 }
 
+void setContextFlag(){
+    preferences.begin("wifi-config");
+    preferences.putInt("openContextFlag",openContextFlag);
+    preferences.end();
+}
 
 //初始化
 void initVoiceWakeSerial(){
@@ -2098,6 +2109,18 @@ void getVoiceWakeData(){
         printWakeData(read1,read2);
         pauseVoice();
         setLLMType(2);
+    }else if(read1 == 21){
+        // 打开上下文
+        openContextFlag = 1;
+        setContextFlag();
+        printWakeData(read1,read2);
+        pauseVoice();
+    }else if(read1 == 22){
+        // 关闭上下文
+        openContextFlag = 0;
+        setContextFlag();
+        printWakeData(read1,read2);
+        pauseVoice();
     }
   }
 }
