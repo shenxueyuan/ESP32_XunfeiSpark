@@ -1,5 +1,5 @@
 #include "I2S.h"
-#define SAMPLE_RATE (8000)
+#define SAMPLE_RATE (16000)
 #define PIN_I2S_BCLK_SCK 19 // SCK
 #define PIN_I2S_LRC_WS 21 // WS 
 #define PIN_I2S_DIN_SD 18 // SD 
