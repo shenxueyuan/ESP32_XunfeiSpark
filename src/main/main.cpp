@@ -74,7 +74,7 @@ String APISecret = "YzMyMDE2YWExMzkyOWU0YmQ4YjIzZmE1"; // API Secret
 
 // 通义千问
 String qwenApiKey = "sk-b60fe4859ae942beb0e5d0cd118b567e";
-String qwenApiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation";
+String qwenApiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 
 // 百度TTS获取token
 String baiduApiUrl = "https://aip.baidubce.com/oauth/2.0/token?client_id=YcYPjhxw0V7wzhcu07xnLbU5&client_secret=ANDLajJTKt4juGarl8cME1BS3aXmRMdV&grant_type=client_credentials";
@@ -373,13 +373,12 @@ DynamicJsonDocument gen_params_qwen()
     DynamicJsonDocument data(1500);
 
     data["model"] = "qwen-turbo";
-    data["max_tokens"] = 100;
-    data["temperature"] = 0.6;
-    // data["stream"] = true;
+    // data["max_tokens"] = 100;
+    // data["temperature"] = 0.6;
+    data["stream"] = true;
 
-    JsonObject input = data.createNestedObject("input");
     // 在message对象中创建一个名为text的嵌套数组
-    JsonArray textArray = input.createNestedArray("messages");
+    JsonArray textArray = data.createNestedArray("messages");
 
     JsonObject systemMessage = textArray.createNestedObject();
     systemMessage["role"] = "system";
@@ -400,49 +399,103 @@ DynamicJsonDocument gen_params_qwen()
 }
 
 // 将问题 发送给 阿里通义千问
+// https://help.aliyun.com/zh/dashscope/developer-reference/use-qwen-by-api
 void sendMsgToQwenAILLM(String question) 
 {
+
+    stt_llm_time = esp_timer_get_time();
+    Serial.print("send msg to qwen-llm: ");
+    Serial.println(stt_llm_time);
+
     HTTPClient http;
-    http.setTimeout(10000);
+    http.setTimeout(20000);     // 设置请求超时时间
     http.begin(qwenApiUrl);
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("Authorization", String(qwenApiKey));
+    String token_key = String("Bearer ") + qwenApiKey;
+    http.addHeader("Authorization", token_key);
+
+    // 向串口输出提示信息
+    Serial.println("Send message to qwen!");
+
     // 生成连接参数的JSON文档
     DynamicJsonDocument jsonData = gen_params_qwen();
+
     // 将JSON文档序列化为字符串
     String jsonString;
     serializeJson(jsonData, jsonString);
 
-    // String payload = "{\"model\":\"qwen-turbo\",\"max_tokens\":100,\"input\":{\"messages\":[{\"role\": \"system\",\"content\": \""+roleContent+"\"},{\"role\": \"user\",\"content\": \"" + question + "\"}]}}";
-
-    // Serial.print("qwen--jsonString:");
-    // Serial.println(jsonString);
-
+    // 向串口输出生成的JSON字符串
+    Serial.println(jsonString);
     int httpResponseCode = http.POST(jsonString);
+
     if (httpResponseCode == 200) {
-        String response = http.getString();
+        // 在 stream（流式调用） 模式下，基于 SSE (Server-Sent Events) 协议返回生成内容，每次返回结果为生成的部分内容片段
+        WiFiClient* stream = http.getStreamPtr();   // 返回一个指向HTTP响应流的指针，通过它可以读取服务器返回的数据
+
+        while (stream->connected()) {   // 这个循环会一直运行，直到客户端（即stream）断开连接。
+            String line = stream->readStringUntil('\n');    // 从流中读取一行字符串，直到遇到换行符\n为止
+            // 检查读取的行是否以data:开头。
+            // 在SSE（Server-Sent Events）协议中，服务器发送的数据行通常以data:开头，这样客户端可以识别出这是实际的数据内容。
+            if (line.startsWith("data:")) {
+                // 如果行以data:开头，提取出data:后面的部分，并去掉首尾的空白字符。
+                String data = line.substring(5);
+                data.trim();
+                // 输出读取的数据，不建议，因为太多了，一次才一两个字
+                // Serial.print("data: ");
+                // Serial.println(data);
+
+                int status = 0;
+
+                if(line.indexOf("[DONE]") != -1 ){
+                    // 如果包含DONE则表示结束
+                    status = 2;
+                    Serial.println("status: 2");
+                    break;
+                }else{
+                    DynamicJsonDocument jsonResponse(1000);
+                    // 解析收到的数据
+                    DeserializationError error = deserializeJson(jsonResponse, data);
+
+                    // 如果解析没有错误
+                    if (!error)
+                    {
+                        const char *content = jsonResponse["choices"][0]["delta"]["content"];
+                        if (jsonResponse["choices"][0]["delta"]["content"] != "")
+                        {
+                            const char *removeSet = "\n*$"; // 定义需要移除的符号集
+                            // 计算新字符串的最大长度
+                            int length = strlen(content) + 1;
+                            char *cleanedContent = new char[length];
+                            removeChars(content, cleanedContent, removeSet);
+                            Serial.println(cleanedContent);
+
+                            // 将内容追加到Answer字符串中
+                            Answer += cleanedContent;
+                            content = "";
+                            // 释放分配的内存
+                            delete[] cleanedContent;
+                            line.clear();
+                            jsonResponse.clear();
+
+                            // 处理qwen流式返回
+                            processResponse(status);
+                        }
+                    }else{
+                        Serial.print("解析报错了");
+                        Serial.println(error.c_str());
+                        break;
+                    }
+                }
+            }
+        }
+        return;
+    } 
+    else 
+    {
+        Serial.printf("Error %i \n", httpResponseCode);
+        Serial.println(http.getString());
         http.end();
-    
-        StaticJsonDocument<1024> jsonDoc;
-        deserializeJson(jsonDoc, response);
-        String outputText = jsonDoc["output"]["text"];
-        Serial.print("qwen--answer:");Serial.println(outputText);
-        
-        Answer = outputText;
- 
-        getText("assistant", Answer);
-        
-        subAnswers.push_back(Answer.c_str());
-        startPlay = true;
-        Answer = "";
-    
-        jsonDoc.clear();
-        jsonData.clear();
-        jsonString.clear();
-        outputText.clear();
-    } else {
-        http.end();
-        Serial.printf("通义千问error %i \n", httpResponseCode);
+        return;
     }
 }
 
@@ -489,8 +542,8 @@ void sendMsgToDoubaoAILLM()
                 String data = line.substring(5);
                 data.trim();
                 // 输出读取的数据，不建议，因为太多了，一次才一两个字
-                //Serial.print("data: ");
-                //Serial.println(data);
+                // Serial.print("data: ");
+                // Serial.println(data);
 
                 int status = 0;
                 DynamicJsonDocument jsonResponse(400);
@@ -528,40 +581,13 @@ void sendMsgToDoubaoAILLM()
                     {
                         break;
                     }
+                }else{
+                    Serial.print("doubao解析报错了");
+                    Serial.println(error.c_str());
+                    break;
                 }
             }
         }
-
-        /* 非流式调用，不推荐，因为没有足够大小的DynamicJsonDocument来存储一次性返回的长文本回复
-        String response = http.getString();
-        http.end();
-        Serial.println(response);
-
-        // Parse JSON response
-        int status = 0;
-        DynamicJsonDocument jsonDoc(1024);
-        deserializeJson(jsonDoc, response);
-        const char *content = jsonDoc["choices"][0]["message"]["content"];
-        const char *removeSet = "\n*$"; // 定义需要移除的符号集
-        // 计算新字符串的最大长度
-        int length = strlen(content) + 1;
-        char *cleanedContent = new char[length];
-        removeChars(content, cleanedContent, removeSet);
-        Serial.println(cleanedContent);
-
-        // 将内容追加到Answer字符串中
-        Answer += cleanedContent;
-        content = "";
-        // 释放分配的内存
-        delete[] cleanedContent;
-        while (Answer != "")
-        {
-            if (Answer.length() < 180)
-                status = 2;
-            processResponse(status);
-        }
-        jsonDoc.clear();
-        */
         return;
     } 
     else 
@@ -577,6 +603,7 @@ void sendMsgToDoubaoAILLM()
 void processResponse(int status)
 {
 
+    // 如果没有在播放
     if (Answer.length() >= textLimit && (audioTTS.isplaying == 0) && flag == 0)
     {
         // 查找第一个句号的位置
@@ -606,7 +633,7 @@ void processResponse(int status)
             startPlay = true;
 
             uint32_t current_time = esp_timer_get_time();
-            Serial.print("doubao response llm and to baidu  speech ：");
+            Serial.print("------------------llm response and baidu  speech------------------ ：");
             Serial.println((current_time - stt_llm_time) / 1000);
         }
         conflag = 1;
@@ -646,7 +673,7 @@ void processResponse(int status)
     if (status == 2 && flag == 0)
     {
         // 播放最终转换的文本
-        if(Answer.length()>5){
+        if(Answer.length() > 5){
             connecttospeech(Answer.c_str());
             // 显示最终转换的文本
             getText("assistant", Answer);
@@ -1378,6 +1405,9 @@ void setup()
     // Serial.print("accessToken:");
     // Serial.println(accessToken);
 
+    volume = preferences.getInt("volume", 100);
+    setVolume();
+
     preferences.end();
 
     // addWifi();
@@ -1388,9 +1418,6 @@ void setup()
 
     // 从服务器获取当前时间
     getTimeFromServer();
-
-    volume = preferences.getInt("volume", 100);
-    setVolume();
 
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
@@ -1431,7 +1458,7 @@ void setVolume()
     if(volume < 30){
         volume = 30;
     }
-    preferences.begin("volume-config");
+    preferences.begin("wifi-config");
     // 设置音频输出引脚和音量
     audioTTS.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
     audioTTS.setVolume(volume);
