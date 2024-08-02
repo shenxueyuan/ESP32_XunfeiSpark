@@ -864,6 +864,10 @@ int dealCommand(){
 
 void playMusic(String musicID, String musicName)
 {
+    if(wifiConnected != 1){
+        writeWakeSerial("11");
+        return;
+    }
     mainStatus = 0;
     String audioStreamURL = "https://music.163.com/song/media/outer/url?id=" + musicID + ".mp3";
     Serial.println(audioStreamURL.c_str());
@@ -1492,8 +1496,8 @@ void WakeupAndStart()
 {
 
     webSocketClientASR.close();
-    // 被唤醒时 闪烁3次
-    ledBulingBuling(3);
+    // 被唤醒时 闪烁4次
+    ledBulingBuling(4);
 
     // 如果网络未连接，通知ASR 播放连接网络音频
     if(wifiConnected != 1){
@@ -1540,9 +1544,6 @@ void ledBulingBuling(int count)
     for(int i = 0 ; i < count; i++){
         // 点亮板载LED指示灯
         digitalWrite(led, HIGH);
-        delay(150);
-        // 熄灭LED
-        digitalWrite(led, LOW);
         delay(150);
     }
 }
