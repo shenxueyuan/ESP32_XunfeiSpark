@@ -594,8 +594,8 @@ private:
     uint32_t m_metacount = 0;     // counts down bytes between metadata
     int m_controlCounter = 0;     // Status within readID3data() and readWaveHeader()
     int8_t m_balance = 0;         // -16 (mute left) ... +16 (mute right)
-    uint16_t m_vol = 50;          // volume
-    uint8_t m_vol_steps = 100;     // default
+    uint16_t m_vol = 21;          // volume
+    uint8_t m_vol_steps = 21;     // default
     double m_limit_left = 0;      // limiter 0 ... 1, left channel
     double m_limit_right = 0;     // limiter 0 ... 1, right channel
     uint8_t m_curve = 0;          // volume characteristic

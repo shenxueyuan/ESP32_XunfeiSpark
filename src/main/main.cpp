@@ -12,6 +12,7 @@
 #include <ESPAsyncWebServer.h>
 #include <Preferences.h>
 #include <DNSServer.h>
+#include "SPIFFS.h"
 class CaptiveRequestHandler : public AsyncWebHandler {
 public:
   CaptiveRequestHandler() {}
@@ -102,11 +103,12 @@ unsigned long pushTime = 0;
 int mainStatus = 0;
 int receiveFrame = 0;
 int noise = 50;
-int volume = 100;// 音量大小
+int volume = 15;// 音量大小
 int textLimit= 10; // 超过多长 要分割，立马播放
 int llmType = 2; // 1:讯飞AI 2:通义千问 3:豆包，火山引擎
 HTTPClient https; // 创建一个HTTP客户端对象
 
+int wifiConnected = 0;// 网络是否连接成功 true：是 false：不是
 int wifiStatus = 0;// 网络热点开关 1：打开 0：关闭
 
 int openContextFlag = 0 ; // 聊天上下文，默认关闭
@@ -144,12 +146,12 @@ void handleSaveMusic(AsyncWebServerRequest *request);
 void handleDeleteMusic(AsyncWebServerRequest *request);
 void handleListMusic(AsyncWebServerRequest *request);
 String generateRandomString(size_t length);
-void initMusic();
 void processResponse(int status);
 
 void initVoiceWakeSerial();
 void getVoiceWakeData();
 void printWakeData(int read1,int read2);
+void writeWakeSerial(const char *msg);
 
 void getText(String role, String content);
 void checkLen();
@@ -158,9 +160,12 @@ void ConnServerAI();
 void ConnServerASR();
 void WakeupAndStart();
 
+void ledBulingBuling(int count);
+
 void startWIfiAP(bool isOpen);
 
 int dealCommand();
+void playMusic(String &musicID, String &musicName);
 void getBaiduAccessToken();
 void connecttospeech(String content);
 void sendMsgToQwenAILLM(String question);
@@ -684,6 +689,7 @@ void processResponse(int status)
         }
     }
 }
+
 void getBaiduAccessToken() 
 {
     HTTPClient http;
@@ -814,31 +820,6 @@ void onMessageCallbackASR(WebsocketsMessage message)
 int dealCommand(){
     int flag = 1;//默认命中任务
 
-    // if ((askquestion.indexOf("开") > -1 
-    //             || (askquestion.indexOf("切") > -1 ) || (askquestion.indexOf("换") > -1 )
-    //         ) 
-    //         && (askquestion.indexOf("讯飞") > -1))
-    // {
-    //     askquestion = "已切换为讯飞星火大模型";
-    //     llmType = 1;
-    //     connecttospeech(askquestion.c_str());
-    //     // 打印内容
-    //     askquestion = "";
-    //     conflag = 1;
-    // }
-    // else if ((askquestion.indexOf("开") > -1 
-    //             || (askquestion.indexOf("切") > -1 ) || (askquestion.indexOf("换") > -1 )
-    //         ) 
-    //         && (askquestion.indexOf("千问") > -1 || askquestion.indexOf("阿里") > -1))
-    // {
-    //     askquestion = "已切换为阿里通义千问大模型";
-    //     llmType = 2;
-    //     connecttospeech(askquestion.c_str());
-    //     // 打印内容
-    //     askquestion = "";
-    //     conflag = 1;
-    // }
-    // else 
     if ((askquestion.indexOf("切") > -1 || (askquestion.indexOf("换") > -1 )) && askquestion.indexOf("奥特曼") > -1)
     {
         askquestion = welcomeATM;
@@ -874,75 +855,32 @@ int dealCommand(){
         askquestion = "";
         conflag = 1;
     }
-    else if (((askquestion.indexOf("听") > -1 || askquestion.indexOf("放") > -1) && (askquestion.indexOf("歌") > -1 || askquestion.indexOf("音乐") > -1)) || mainStatus == 1)
-    {
-        String musicName = "";
-        String musicID = "";
-
-        preferences.begin("music_store", true);
-
-        // 查找音乐名称对应的ID
-        int numMusic = preferences.getInt("numMusic", 0);
-        for (int i = 0; i < numMusic; ++i)
-        {
-            musicName = preferences.getString(("musicName" + String(i)).c_str(), "");
-            musicID = preferences.getString(("musicId" + String(i)).c_str(), "");
-            Serial.println("音乐名称: " + musicName);
-            Serial.println("音乐ID: " + musicID);
-            if (askquestion.indexOf(musicName.c_str()) > -1)
-            {
-                Serial.println("找到了！");
-                break;
-            }
-            else
-            {
-                musicID = "";
-            }
-        }
-
-        // 输出结果
-        if (musicID == "") {
-            mainStatus = 1;
-            Serial.println("未找到对应的音乐");
-            lastsetence = false;
-            isReady = true;
-            // todo 提问 大模型
-            if(llmType == 1){
-                getText("user", askquestion);
-                ConnServerAI();
-            }else if(llmType == 2){
-                getText("user", askquestion);
-                sendMsgToQwenAILLM(askquestion);
-            }else if(llmType == 3){
-                getText("user", askquestion);
-                sendMsgToDoubaoAILLM();
-            }
-        } else {
-            // 自建音乐服务器，按照文件名查找对应歌曲
-            mainStatus = 0;
-            String audioStreamURL = "https://music.163.com/song/media/outer/url?id=" + musicID + ".mp3";
-            Serial.println(audioStreamURL.c_str());
-            audioTTS.connecttohost(audioStreamURL.c_str());
-            delay(2000);
-
-            askquestion = "正在播放音乐：" + musicName;
-            Serial.println(askquestion);
-            Serial.println("音乐名称: " + musicName);
-            Serial.println("音乐ID: " + musicID);
-            askquestion = "";
-            // 设置播放开始标志
-            startPlay = true;
-            flag = 1;
-            Answer = "音乐播放完了，主人还想听什么音乐吗？";
-            conflag = 1;
-        }
-        preferences.end();
-    }
     
     else{
         flag = 0;// 未命中任务
     }
     return flag;
+}
+
+void playMusic(String musicID, String musicName)
+{
+    mainStatus = 0;
+    String audioStreamURL = "https://music.163.com/song/media/outer/url?id=" + musicID + ".mp3";
+    Serial.println(audioStreamURL.c_str());
+    audioTTS.connecttohost(audioStreamURL.c_str());
+
+    delay(2000);
+
+    askquestion = "正在播放音乐：" + musicName;
+    Serial.println(askquestion);
+    Serial.println("音乐名称: " + musicName);
+    Serial.println("音乐ID: " + musicID);
+    askquestion = "";
+    // 设置播放开始标志
+    startPlay = true;
+    flag = 1;
+    Answer = "音乐播放完了，主人还想听什么音乐吗？";
+    conflag = 1;
 }
 
 // 录音
@@ -1229,7 +1167,6 @@ int wifiConnect()
                 if (count >= 30)
                 {
                     Serial.printf("\r\n-- wifi connect fail! --\r\n");
-                    
                     break;
                 }
 
@@ -1250,11 +1187,12 @@ int wifiConnect()
                 Serial.println("Free Heap: " + String(ESP.getFreeHeap()));
                 
                 preferences.end(); 
+                wifiConnected = 1;
                 return 1;
             }
         }
     }
-    
+    wifiConnected = 0;
     return 0;
 }
  
@@ -1366,6 +1304,8 @@ void setup()
     // 初始化串口通信，波特率为115200
     Serial.begin(115200);
 
+    SPIFFS.begin();
+
     // 初始化离线语音唤醒
     initVoiceWakeSerial();
 
@@ -1380,7 +1320,7 @@ void setup()
     // 初始化音频模块audioRecord
     audioRecord.init();
 
-    int result = wifiConnect();
+    wifiConnect();
 
     // 初始化 Preferences
     preferences.begin("wifi-config");
@@ -1409,15 +1349,19 @@ void setup()
     // Serial.print("accessToken:");
     // Serial.println(accessToken);
 
-    volume = preferences.getInt("volume", 100);
+    volume = preferences.getInt("volume", 15);
     setVolume();
 
     preferences.end();
 
     // addWifi();
-    // 如果网络未连接，打开AP网络
-    if(result !=1){
+    // 如果网络未连接，打开AP网络 
+    if(wifiConnected != 1){
         startWIfiAP(true);
+        writeWakeSerial("11");
+    }else{
+        // 通知ASR模块，告诉用户可以开始聊天了
+        connecttospeech("网络连接成功，可以开始聊天啦");
     }
 
     // 从服务器获取当前时间
@@ -1426,10 +1370,9 @@ void setup()
     // 记录当前时间，用于后续时间戳比较
     urlTime = millis();
 
-    // 初始化音乐
-    initMusic();
     delay(2000);
 
+    // audioTTS.connecttoFS(SPIFFS,"firstrun.mp3",-1);
 }
 
 void pauseVoice(){
@@ -1450,17 +1393,16 @@ void setVolume2(int vol){
     volume = vol;
     
     setVolume();
-    
 }
 
 // 调整音量
 void setVolume()
 {
-    if(volume > 100){
-        volume = 100;
+    if(volume > 21){
+        volume = 21;
     }
-    if(volume < 30){
-        volume = 30;
+    if(volume < 6){
+        volume = 6;
     }
     preferences.begin("wifi-config");
     // 设置音频输出引脚和音量
@@ -1503,13 +1445,16 @@ void startWIfiAP(bool isOpen)
 
 void loop()
 {
+
+    // 循环读取串口信息，放在最前面
+    getVoiceWakeData();
+
     // 轮询处理WebSocket客户端消息
     webSocketClientAI.poll();
     webSocketClientASR.poll();
  
     // 如果开始播放语音
-    if (startPlay)
-    {
+    if (startPlay){
         // 调用voicePlay函数播放语音
         voicePlay();
     }
@@ -1518,26 +1463,20 @@ void loop()
     audioTTS.loop();
 
     // 如果音频正在播放
-    if (audioTTS.isplaying == 1)
-    {
+    if (audioTTS.isplaying == 1) {
         // 点亮板载LED指示灯
         digitalWrite(led, HIGH);
-    }
-    else
-    {
+    } else {
         // 熄灭板载LED指示灯
         digitalWrite(led, LOW);
     }
 
-
     // boot检测按键是否按下
-    if (digitalRead(key_boot) == LOW)
-    {
+    if (digitalRead(key_boot) == LOW) {
         WakeupAndStart();
     }
     // 添加连续对话功能
-    if (audioTTS.isplaying == 0 && Answer == "" && subindex == subAnswers.size() && conflag == 1)
-    {
+    if (audioTTS.isplaying == 0 && Answer == "" && subindex == subAnswers.size() && conflag == 1){
         Serial.println("开启连续对话...");
         WakeupAndStart();
     }
@@ -1545,8 +1484,6 @@ void loop()
     if(wifiStatus == 1){
         dnsServer.processNextRequest();   
     }
-    // 循环读取串口信息
-    getVoiceWakeData();
 }
 /**
  * ASR唤醒 并 开始录音
@@ -1555,11 +1492,14 @@ void WakeupAndStart()
 {
 
     webSocketClientASR.close();
-    // 点亮板载LED指示灯
-    digitalWrite(led, HIGH);
-    delay(200);
-    digitalWrite(led, LOW);
+    // 被唤醒时 闪烁3次
+    ledBulingBuling(3);
 
+    // 如果网络未连接，通知ASR 播放连接网络音频
+    if(wifiConnected != 1){
+        writeWakeSerial("11");
+        return;
+    }
     conflag = 0;
     Serial.print("loopcount：");
     Serial.println(loopcount);
@@ -1591,7 +1531,20 @@ void WakeupAndStart()
     ConnServerASR();
     
     adc_complete_flag = 0;
+}
 
+// 点亮板载LED指示灯
+void ledBulingBuling(int count)
+{
+    // count 是几，就循环几次
+    for(int i = 0 ; i < count; i++){
+        // 点亮板载LED指示灯
+        digitalWrite(led, HIGH);
+        delay(150);
+        // 熄灭LED
+        digitalWrite(led, LOW);
+        delay(150);
+    }
 }
 
 // 设置websocket API地址 ，用于鉴权鉴权
@@ -1771,6 +1724,12 @@ void handleSave(AsyncWebServerRequest *request)
 
     request->send(200, "text/html", "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>ESP32 Wi-Fi Configuration</title></head><body><h1>Configuration Saved!</h1><p>Network information added successfully.</p><p><a href='/'>Go Back</a></p></body></html>");
     preferences.end();
+
+    // 重新保存后，如果当前没连接网络，重新连接
+    if (WiFi.status() != WL_CONNECTED){
+        wifiConnect();
+    }
+
 }
 
 void handleDelete(AsyncWebServerRequest *request)
@@ -1836,65 +1795,6 @@ void handleList(AsyncWebServerRequest *request)
     preferences.end();
 }
 
-void initMusic(){
-    // 小星星 1451396976
-    // 拔萝卜 28700292
-    // 摇篮曲 1417892410
-    // 莫扎特 419485659
-    // 小兔子乖乖 566443169
-    // 两只老虎 566443167
-    // 世上只有妈妈好 566443174
-    // 小白兔 1451390672
-    // 生日快乐歌 2082151352
-    // 丢手绢 1451401289
-    // 小燕子 1451401297
-
-    preferences.begin("music_store", false);
-
-    int numMusic = preferences.getInt("numMusic", 0);
-    Serial.print("音乐数量》：");
-    Serial.println(numMusic);
-    if(numMusic == 0){
-        numMusic = 11;
-
-        preferences.putString(("musicName" + String(0)).c_str(), "小星星");
-        preferences.putString(("musicId" + String(0)).c_str(), "1451396976");
-
-        preferences.putString(("musicName" + String(1)).c_str(), "拔萝卜");
-        preferences.putString(("musicId" + String(1)).c_str(), "28700292");
-        
-        preferences.putString(("musicName" + String(2)).c_str(), "摇篮曲");
-        preferences.putString(("musicId" + String(2)).c_str(), "1417892410");
-        
-        preferences.putString(("musicName" + String(3)).c_str(), "莫扎特");
-        preferences.putString(("musicId" + String(3)).c_str(), "419485659");
-        
-        preferences.putString(("musicName" + String(4)).c_str(), "小兔子乖乖");
-        preferences.putString(("musicId" + String(4)).c_str(), "566443169");
-        
-        preferences.putString(("musicName" + String(5)).c_str(), "两只老虎");
-        preferences.putString(("musicId" + String(5)).c_str(), "566443167");
-        
-        preferences.putString(("musicName" + String(6)).c_str(), "世上只有妈妈好");
-        preferences.putString(("musicId" + String(6)).c_str(), "566443174");
-        
-        preferences.putString(("musicName" + String(7)).c_str(), "小白兔");
-        preferences.putString(("musicId" + String(7)).c_str(), "1451390672");
-        
-        preferences.putString(("musicName" + String(8)).c_str(), "生日快乐歌");
-        preferences.putString(("musicId" + String(8)).c_str(), "2082151352");
-        
-        preferences.putString(("musicName" + String(9)).c_str(), "丢手绢");
-        preferences.putString(("musicId" + String(9)).c_str(), "1451401289");
-        
-        preferences.putString(("musicName" + String(10)).c_str(), "小燕子");
-        preferences.putString(("musicId" + String(10)).c_str(), "1451401297");
-
-
-        preferences.putInt("numMusic", 11);
-    }
-        preferences.end();
-}
 
 void handleSaveMusic(AsyncWebServerRequest *request)
 {
@@ -2026,6 +1926,7 @@ void initVoiceWakeSerial(){
   voiceWakeSerial.begin(BAUD);
 }
 
+
 //循环获取语音模块的串口数据
 void getVoiceWakeData(){
   //从语音模块读取响应数据
@@ -2041,8 +1942,7 @@ void getVoiceWakeData(){
     printWakeData(read1,read2);
     
     if(read1 == 1){
-        //收到语音唤醒打开录音
-        printWakeData(read1,read2);
+        // 收到语音唤醒打开录音
         WakeupAndStart();
         // 避免重复收到消息
         delay(500);
@@ -2051,27 +1951,27 @@ void getVoiceWakeData(){
         // 音量最大
         printWakeData(read1,read2);
         pauseVoice();
-        setVolume2(100);
+        setVolume2(21);
     }else if(read1 == 3){
         // 音量最小
         printWakeData(read1,read2);
         pauseVoice();
-        setVolume2(30);
+        setVolume2(6);
     }else if(read1 == 4){
         // 音量中等
         printWakeData(read1,read2);
         pauseVoice();
-        setVolume2(70);
+        setVolume2(12);
     }else if(read1 == 5){
-        // 增大音量
+        // 声音大一点
         printWakeData(read1,read2);
         pauseVoice();
-        setVolume2(volume+10);
+        setVolume2(15);
     }else if(read1 == 6){
-        // 减小音量
+        // 声音小一点
         printWakeData(read1,read2);
         pauseVoice();
-        setVolume2(volume-10);
+        setVolume2(9);
     }else if(read1 == 7){
         // 暂停播放
         printWakeData(read1,read2);
@@ -2121,6 +2021,69 @@ void getVoiceWakeData(){
         setContextFlag();
         printWakeData(read1,read2);
         pauseVoice();
+    }else if(read1 == 23){
+        // printWakeData(read1,read2);
+        // pauseVoice();
+        // // 切换音色 ASR  不支持 切换
+        // if(per == "5118"){
+        //     per = "4";
+        //     // 切换 童声
+        //     voiceWakeSerial.write("changeper02");
+        // }else{
+        //     // 切换女声
+        //     per = "5118";
+        //     voiceWakeSerial.write("changeper01");
+        // }
+    }else if(read1 == 24){
+        // 播放音乐 小星星 1
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("1451396976","小星星");
+    }else if(read1 == 25){
+        // 播放音乐 拔萝卜  1
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("28700292","拔萝卜");
+    }else if(read1 == 32){
+        // 播放音乐 小兔子乖乖
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("566443169","小兔子乖乖");
+    }else if(read1 == 33){
+        // 播放音乐 两只老虎
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("566443167","两只老虎");
+    }else if(read1 == 34){
+        // 播放音乐 世上只有妈妈好
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("566443174","世上只有妈妈好");
+    }else if(read1 == 35){
+        // 播放音乐 小白兔
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("1451390672","小白兔");
+    }else if(read1 == 36){
+        // 播放音乐 生日快乐歌
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("2082151352","生日快乐歌");
+    }else if(read1 == 37){
+        // 播放音乐 丢手绢
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("1451401289","丢手绢");
+    }else if(read1 == 38){
+        // 播放音乐 小燕子
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("1451401297","小燕子");
+    }else if(read1 == 39){
+        // 播放音乐 摇篮曲
+        printWakeData(read1,read2);
+        pauseVoice();
+        playMusic("1417892410","摇篮曲");
     }
   }
 }
@@ -2128,6 +2091,11 @@ void getVoiceWakeData(){
 // 打印收到的消息，延迟500毫秒，避免抖动重复收到消息
 void printWakeData(int read1,int read2){
     Serial.print("收到内容：");
+    ledBulingBuling(2);
     Serial.print(read1);Serial.print(" ");
     Serial.print(read2);Serial.println();
+}
+
+void writeWakeSerial(const char *msg){
+    voiceWakeSerial.write(msg);
 }
