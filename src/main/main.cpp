@@ -12,7 +12,6 @@
 #include <ESPAsyncWebServer.h>
 #include <Preferences.h>
 #include <DNSServer.h>
-#include "SPIFFS.h"
 class CaptiveRequestHandler : public AsyncWebHandler {
 public:
   CaptiveRequestHandler() {}
@@ -105,7 +104,7 @@ int receiveFrame = 0;
 int noise = 50;
 int volume = 15;// 音量大小
 int textLimit= 10; // 超过多长 要分割，立马播放
-int llmType = 2; // 1:讯飞AI 2:通义千问 3:豆包，火山引擎
+int llmType = 3; // 1:讯飞AI 2:通义千问 3:豆包，火山引擎
 HTTPClient https; // 创建一个HTTP客户端对象
 
 int wifiConnected = 0;// 网络是否连接成功 true：是 false：不是
@@ -849,7 +848,7 @@ int dealCommand(){
         roleContent = roleAoteMan;
         per = "5118";
         preferences.putString("per", per);
-        llmType = 2;
+        llmType = 3;
         getBaiduAccessToken();
         connecttospeech(askquestion.c_str());
         askquestion = "";
@@ -1308,8 +1307,6 @@ void setup()
     // 初始化串口通信，波特率为115200
     Serial.begin(115200);
 
-    SPIFFS.begin();
-
     // 初始化离线语音唤醒
     initVoiceWakeSerial();
 
@@ -1375,8 +1372,6 @@ void setup()
     urlTime = millis();
 
     delay(2000);
-
-    // audioTTS.connecttoFS(SPIFFS,"firstrun.mp3",-1);
 }
 
 void pauseVoice(){
