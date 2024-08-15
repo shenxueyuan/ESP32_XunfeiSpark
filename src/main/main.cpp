@@ -1540,6 +1540,8 @@ void ledBulingBuling(int count)
         // 点亮板载LED指示灯
         digitalWrite(led, HIGH);
         delay(150);
+        digitalWrite(led, LOW);
+        delay(150);
     }
 }
 
