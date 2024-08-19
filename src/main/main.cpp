@@ -130,8 +130,8 @@ Audio2 audioTTS(false, 3, I2S_NUM_1); // 参数: 是否使用SD卡, 音量, I2S�
 
 // 定义I2S引脚
 #define I2S_DOUT 27 // DIN引脚
-#define I2S_BCLK 26 // BCLK引脚
-#define I2S_LRC 25  // LRC引脚
+#define I2S_BCLK 26 // BCLK引脚 bck_io_num
+#define I2S_LRC 25  // LRC引脚 ws_io_num
 
 // 函数声明
 // WIFI 相关操作
